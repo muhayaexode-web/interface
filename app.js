@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
-import { BizError } from './db.js';
+import { AGO, BizError } from './db.js';
 import { clearCookie, login, makeToken, register, sessionCookie, throttle, userFromRequest } from './auth.js';
 import { acceptOffer, cancelOffer, commissionOn, createOffer, opposite, voidMatch } from './bets.js';
 import { reconcile, startDeposit, startWithdrawal } from './wallet.js';
@@ -112,6 +112,25 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
       dateOffset(tab === 'finished' ? -2 : -1), staleCut, q,
     );
     return { data: { matches: rows.map(matchRow) } };
+  });
+
+  route('GET', '/api/activity', async (req) => {
+    await requireUser(req);
+    const rows = await db.all(
+      `SELECT b.id, b.stake, b.status, m.home_team, m.away_team
+       FROM bets b JOIN matches m ON m.id = b.match_id
+       WHERE (b.status = 'open' AND m.status IN ('Scheduled','LIVE'))
+          OR (b.status = 'matched' AND b.matched_at >= ${AGO('1 day')})
+       ORDER BY b.id DESC LIMIT 30`,
+    );
+    return {
+      data: {
+        items: rows.map((r) => ({
+          id: r.id, match: `${r.home_team} vs ${r.away_team}`, stake: r.stake,
+          state: r.status === 'open' ? 'waiting' : 'matched',
+        })),
+      },
+    };
   });
 
   route('GET', '/api/matches/:id', async (req, res, { params }) => {
