@@ -16,6 +16,7 @@ const int = (name, def) => {
 
 export const config = {
   port: int('PORT', 3000),
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean),
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   sessionSecret: process.env.SESSION_SECRET || '',
   adminCode: process.env.ADMIN_CODE || '',
@@ -30,7 +31,7 @@ export const config = {
   currency: 'CDF',
   networks: { airtel_cd: 'Airtel Money', orange_cd: 'Orange Money', vodacom_cd: 'M-Pesa (Vodacom)' },
   databaseUrl: process.env.DATABASE_URL || '',
-  publicDir: path.join(ROOT, '..', 'public'),
+  publicDir: path.join(ROOT, '..', 'dist'),
 };
 
 if (config.sessionSecret.length < 32) {
