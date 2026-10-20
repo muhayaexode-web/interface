@@ -19,7 +19,7 @@ const MIME = {
 
 const SECURITY_HEADERS = {
   'Content-Security-Policy':
-    "default-src 'self'; img-src 'self' data: https://sportapi.ai; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "default-src 'self'; img-src 'self' data: https://sportapi.ai; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
@@ -293,7 +293,7 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
       let body = {};
       if (req.method === 'POST') {
         const origin = req.headers.origin;
-        if (origin && new URL(origin).host !== req.headers.host) throw new BizError('Origine refusée', 403);
+        if (origin && new URL(origin).host !== req.headers.host && !config.allowedOrigins.includes(origin)) throw new BizError('Origine refusée', 403);
         body = await readJson(req);
       }
       const out = await r.handler(req, res, {
