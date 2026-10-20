@@ -114,6 +114,17 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     return { data: { matches: rows.map(matchRow) } };
   });
 
+  route('GET', '/api/notifications', async (req, res, { query }) => {
+    const user = await requireUser(req);
+    const after = Math.max(0, Number(query.get('after')) || 0);
+    const items = await db.all(
+      'SELECT id, title, body, created_at FROM notifications WHERE user_id = ? AND id > ? ORDER BY id LIMIT 20',
+      user.id, after,
+    );
+    const last = await db.get('SELECT COALESCE(MAX(id), 0) AS id FROM notifications WHERE user_id = ?', user.id);
+    return { data: { items, last: last.id } };
+  });
+
   route('GET', '/api/activity', async (req) => {
     await requireUser(req);
     const rows = await db.all(
