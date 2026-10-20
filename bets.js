@@ -1,4 +1,4 @@
-import { adjustBalance, BizError, NOW, tx } from './db.js';
+import { adjustBalance, BizError, notify, NOW, tx } from './db.js';
 import { config } from './config.js';
 
 const BETTABLE = new Set(['Scheduled', 'LIVE']);
@@ -54,6 +54,7 @@ export async function acceptOffer(db, userId, betId) {
     if (!BETTABLE.has(m.status)) throw new BizError('Les paris sont fermés pour ce match');
     await adjustBalance(t, userId, -bet.stake, 'bet_stake', `bet:${bet.id}`);
     await t.run(`UPDATE bets SET taker_id = ?, status = 'matched', matched_at = ${NOW} WHERE id = ?`, userId, bet.id);
+    await notify(t, bet.creator_id, '🤝 Pari accepté', `Votre pari de ${bet.stake} CDF sur ${m.home_team} vs ${m.away_team} a trouvé un adversaire.`);
   });
 }
 
@@ -68,9 +69,12 @@ export async function cancelOffer(db, userId, betId) {
   });
 }
 
-async function refundBet(t, bet) {
+async function refundBet(t, bet, label) {
   await adjustBalance(t, bet.creator_id, bet.stake, 'bet_refund', `bet:${bet.id}`);
   if (bet.taker_id) await adjustBalance(t, bet.taker_id, bet.stake, 'bet_refund', `bet:${bet.id}`);
+  const text = `${bet.stake} CDF remboursés (${label}).`;
+  await notify(t, bet.creator_id, '↩️ Mise remboursée', text);
+  await notify(t, bet.taker_id, '↩️ Mise remboursée', text);
   await t.run(`UPDATE bets SET status = 'refunded', settled_at = ${NOW} WHERE id = ?`, bet.id);
 }
 
@@ -86,7 +90,7 @@ export async function settleMatch(db, matchId) {
     if (bets.length === 0) return 0;
 
     if (VOID.has(m.status)) {
-      for (const b of bets) await refundBet(t, b);
+      for (const b of bets) await refundBet(t, b, 'match annulé ou reporté');
       return bets.length;
     }
     const outcome = outcomeOf(m);
@@ -94,7 +98,7 @@ export async function settleMatch(db, matchId) {
 
     for (const b of bets) {
       if (b.status === 'open' || outcome === 'draw') {
-        await refundBet(t, b);
+        await refundBet(t, b, b.status === 'open' ? 'aucun adversaire' : 'match nul');
         continue;
       }
       const winnerId = b.creator_side === outcome ? b.creator_id : b.taker_id;
@@ -102,6 +106,9 @@ export async function settleMatch(db, matchId) {
       const payout = 2 * b.stake - commission;
       await adjustBalance(t, winnerId, payout, 'bet_win', `bet:${b.id}`);
       await adjustBalance(t, null, commission, 'commission', `bet:${b.id}`);
+      const loserId = winnerId === b.creator_id ? b.taker_id : b.creator_id;
+      await notify(t, winnerId, '🎉 Pari gagné', `${m.home_team} vs ${m.away_team} : vous gagnez ${payout} CDF.`);
+      await notify(t, loserId, '😕 Pari perdu', `${m.home_team} vs ${m.away_team} : vous perdez ${b.stake} CDF.`);
       await t.run(
         `UPDATE bets SET status = 'settled', winner_id = ?, payout = ?, commission = ?, settled_at = ${NOW} WHERE id = ?`,
         winnerId, payout, commission, b.id,
