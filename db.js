@@ -108,10 +108,13 @@ const SCHEMA_SQL = `
     user_id BIGINT NOT NULL REFERENCES users(id),
     title TEXT NOT NULL,
     body TEXT NOT NULL,
+    event_key TEXT,
     read INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT ${NOW}
   );
+  ALTER TABLE notifications ADD COLUMN IF NOT EXISTS event_key TEXT;
   CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_user_event ON notifications(user_id, event_key) WHERE event_key IS NOT NULL;
 
   -- Supabase expose le schéma public via une API REST publique : RLS sans politique
   -- bloque tout accès par la clé anon/publique. Le serveur (rôle postgres) n'est pas concerné.
