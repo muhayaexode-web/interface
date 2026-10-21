@@ -22,6 +22,8 @@ export const config = {
   adminCode: process.env.ADMIN_CODE || '',
   saspayKey: process.env.SASPAY_API_KEY || '',
   sportApiKey: process.env.SPORTAPI_KEY || '',
+  newApiKey: process.env.NEW_API || '',
+  footballProvider: process.env.FOOTBALL_PROVIDER || (process.env.NEW_API ? 'both' : 'sportapi'),
   commissionPercent: int('COMMISSION_PERCENT', 10),
   minStake: int('MIN_STAKE', 500),
   maxStake: int('MAX_STAKE', 1_000_000),
