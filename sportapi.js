@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { selectFeaturedMatch } from './featured.js';
 import { settleMatch } from './bets.js';
 import { NOW, tx } from './db.js';
 
@@ -73,10 +74,36 @@ export async function settleFinished(db) {
   return n;
 }
 
+export async function notifyFeaturedMatch(db, date) {
+  const staleCut = new Date(Date.now() - 4 * 3600_000).toISOString();
+  const matches = await db.all(
+    `SELECT m.home_team, m.away_team, m.league_name, m.kickoff_utc,
+       (SELECT COUNT(*) FROM bets b WHERE b.match_id = m.id AND b.status = 'open') AS open_offers
+     FROM matches m
+     WHERE m.date = ? AND m.status = 'Scheduled' AND m.kickoff_utc >= ?
+     ORDER BY m.kickoff_utc ASC`,
+    date, staleCut,
+  );
+  const match = selectFeaturedMatch(matches);
+  if (!match) return;
+
+  const kickoff = match.kickoff_utc
+    ? new Date(match.kickoff_utc).toLocaleTimeString('fr-FR', { timeZone: 'Africa/Kinshasa', hour: '2-digit', minute: '2-digit' })
+    : null;
+  const body = `${match.home_team} vs ${match.away_team}${match.league_name ? ` · ${match.league_name}` : ''}${kickoff ? ` · ${kickoff}` : ''}`;
+  await db.run(
+    `INSERT INTO notifications (user_id, title, body, event_key)
+     SELECT id, ?, ?, ? FROM users
+     ON CONFLICT (user_id, event_key) WHERE event_key IS NOT NULL DO NOTHING`,
+    '🔥 Match à la une aujourd’hui', body, `featured:${date}`,
+  );
+}
+
 export async function syncDate(db, date, fetcher = fetchFixtures) {
   const fixtures = await fetcher(date);
   await upsertFixtures(db, fixtures);
   await settleFinished(db);
+  if (date === dateOffset(0)) await notifyFeaturedMatch(db, date);
   return fixtures.length;
 }
 
