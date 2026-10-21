@@ -2,6 +2,7 @@ const TOP_CLUBS = [
   'real madrid', 'barcelona', 'barça', 'manchester city', 'liverpool', 'arsenal', 'bayern', 'paris saint', 'psg',
   'manchester united', 'chelsea', 'tottenham', 'juventus', 'inter', 'ac milan', 'milan', 'atletico madrid',
   'atlético madrid', 'borussia dortmund', 'napoli', 'benfica', 'porto', 'ajax', 'leverkusen', 'roma', 'tp mazembe',
+  'congo dr', 'dr congo', 'rd congo', 'rdc', 'congo (dr)',
 ];
 
 const clubScore = (name = '') => {
