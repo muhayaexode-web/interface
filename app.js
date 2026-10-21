@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
@@ -17,9 +18,15 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+const logoUrl = (l) => {
+  if (!l) return null;
+  const ap = /^ap-(\d+)$/.exec(l);
+  return ap ? `https://media.api-sports.io/football/teams/${ap[1]}.png` : `https://sportapi.ai/logos/${l}`;
+};
+
 const SECURITY_HEADERS = {
   'Content-Security-Policy':
-    "default-src 'self'; img-src 'self' data: https://sportapi.ai; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "default-src 'self'; img-src 'self' data: https://sportapi.ai https://media.api-sports.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
@@ -63,8 +70,8 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
   const matchRow = (m) => ({
     id: m.id, league: m.league_name, home: m.home_team, away: m.away_team, kickoff: m.kickoff_utc,
     status: m.status, minute: m.minute, homeScore: m.home_score, awayScore: m.away_score,
-    homeLogo: m.home_logo ? `https://sportapi.ai/logos/${m.home_logo}` : null,
-    awayLogo: m.away_logo ? `https://sportapi.ai/logos/${m.away_logo}` : null,
+    homeLogo: logoUrl(m.home_logo),
+    awayLogo: logoUrl(m.away_logo),
     open_offers: m.open_offers,
   });
 
@@ -343,7 +350,17 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
       res.writeHead(404, SECURITY_HEADERS).end('Not found');
       return;
     }
-    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' });
+    const headers = { ...SECURITY_HEADERS, 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' };
+    if (path.extname(file) === '.html') {
+      // Parcel injecte un importmap inline : on autorise uniquement ses hashs exacts.
+      const html = fs.readFileSync(file, 'utf8');
+      const hashes = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)]
+        .map((m) => `'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`);
+      if (hashes.length) headers['Content-Security-Policy'] = SECURITY_HEADERS['Content-Security-Policy'].replace("script-src 'self'", `script-src 'self' ${hashes.join(' ')}`);
+      res.writeHead(200, headers).end(html);
+      return;
+    }
+    res.writeHead(200, headers);
     fs.createReadStream(file).pipe(res);
   }
 
