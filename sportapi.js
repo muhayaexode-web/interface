@@ -1,5 +1,6 @@
 import { config } from './config.js';
 import { selectFeaturedMatch } from './featured.js';
+import { fetchApiSportsFixtures, dropDuplicates } from './apisports.js';
 import { settleMatch } from './bets.js';
 import { NOW, tx } from './db.js';
 
@@ -99,19 +100,56 @@ export async function notifyFeaturedMatch(db, date) {
   );
 }
 
-export async function syncDate(db, date, fetcher = fetchFixtures) {
-  const fixtures = await fetcher(date);
+const PROVIDERS = {
+  sportapi: { fetch: (d) => fetchFixtures(d) },
+  apisports: { fetch: (d) => fetchApiSportsFixtures(d), dedupe: true },
+};
+
+const enabledProviders = () => {
+  const p = config.footballProvider;
+  if (p === 'both') return ['sportapi', ...(config.newApiKey ? ['apisports'] : [])];
+  return [p in PROVIDERS ? p : 'sportapi'];
+};
+
+export async function syncProvider(db, date, name) {
+  const provider = PROVIDERS[name];
+  let fixtures = await provider.fetch(date);
+  if (provider.dedupe) fixtures = await dropDuplicates(db, fixtures);
   await upsertFixtures(db, fixtures);
-  await settleFinished(db);
-  if (date === dateOffset(0)) await notifyFeaturedMatch(db, date);
   return fixtures.length;
 }
 
-// Planificateur : aujourd'hui / hier / jours avec paris en cours souvent, jours à venir rarement
-// (reste largement sous le quota gratuit de 2000 requêtes par jour).
+async function finishSync(db, date) {
+  await settleFinished(db);
+  if (date === dateOffset(0)) await notifyFeaturedMatch(db, date);
+}
+
+export async function syncDate(db, date, fetcher) {
+  let count = 0;
+  if (fetcher) {
+    const fixtures = await fetcher(date);
+    await upsertFixtures(db, fixtures);
+    count = fixtures.length;
+  } else {
+    let lastErr;
+    for (const name of enabledProviders()) {
+      try {
+        count += await syncProvider(db, date, name);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (lastErr && count === 0) throw lastErr;
+  }
+  await finishSync(db, date);
+  return count;
+}
+
+// Planificateur : aujourd'hui / hier / jours avec paris en cours souvent, jours à venir rarement.
+// sportapi : quota gratuit de 2000 requêtes/jour. API-Football : 100 requêtes/jour, donc très espacé.
 export function startSyncLoop(db, log = console) {
   const last = new Map();
-  const due = (date, everyMs) => Date.now() - (last.get(date) ?? 0) >= everyMs;
+  const due = (key, everyMs) => Date.now() - (last.get(key) ?? 0) >= everyMs;
   let running = false;
 
   async function tick() {
@@ -119,27 +157,34 @@ export function startSyncLoop(db, log = console) {
     running = true;
     try {
       const today = dateOffset(0);
-      const targets = new Map([
-        [today, 150_000],
-        [dateOffset(-1), 300_000],
-        [dateOffset(1), 1_800_000],
-        [dateOffset(2), 1_800_000],
-        [dateOffset(3), 1_800_000],
-      ]);
       const betDates = await db.all(
         `SELECT DISTINCT m.date FROM matches m JOIN bets b ON b.match_id = m.id
          WHERE b.status IN ('open','matched') AND m.date < ?`,
         dateOffset(-1),
       );
-      for (const r of betDates) targets.set(r.date, 300_000);
+      for (const name of enabledProviders()) {
+        const low = name === 'apisports';
+        const targets = new Map(low
+          ? [[today, 1_200_000], [dateOffset(-1), 21_600_000], [dateOffset(1), 21_600_000]]
+          : [
+            [today, 150_000],
+            [dateOffset(-1), 300_000],
+            [dateOffset(1), 1_800_000],
+            [dateOffset(2), 1_800_000],
+            [dateOffset(3), 1_800_000],
+          ]);
+        if (!low) for (const r of betDates) targets.set(r.date, 300_000);
 
-      for (const [date, every] of targets) {
-        if (!due(date, every)) continue;
-        last.set(date, Date.now());
-        try {
-          await syncDate(db, date);
-        } catch (err) {
-          log.error(`[sync ${date}]`, err.message);
+        for (const [date, every] of targets) {
+          const key = `${name}:${date}`;
+          if (!due(key, every)) continue;
+          last.set(key, Date.now());
+          try {
+            await syncProvider(db, date, name);
+            await finishSync(db, date);
+          } catch (err) {
+            log.error(`[sync ${name} ${date}]`, err.message);
+          }
         }
       }
     } catch (err) {
