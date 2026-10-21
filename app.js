@@ -207,13 +207,22 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     await cancelOffer(db, u.id, Number(params.id));
     return { data: { ok: true } };
   });
-  route('GET', '/api/bets/mine', async (req) => {
+  route('GET', '/api/bets/mine', async (req, res, { query }) => {
     const u = await requireUser(req);
+    const requestedPage = Number(query.get('page') ?? 1);
+    if (!Number.isSafeInteger(requestedPage) || requestedPage < 1) throw new BizError('Page invalide');
+    const pageSize = 10;
+    const total = (await db.get(
+      'SELECT COUNT(*) AS count FROM bets WHERE creator_id = ? OR taker_id = ?',
+      u.id, u.id,
+    )).count;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pages);
     const rows = await db.all(
       `SELECT b.*, m.home_team, m.away_team, m.status AS match_status, m.home_score, m.away_score, m.kickoff_utc
        FROM bets b JOIN matches m ON m.id = b.match_id
-       WHERE b.creator_id = ? OR b.taker_id = ? ORDER BY b.id DESC LIMIT 200`,
-      u.id, u.id,
+       WHERE b.creator_id = ? OR b.taker_id = ? ORDER BY b.id DESC LIMIT ? OFFSET ?`,
+      u.id, u.id, pageSize, (page - 1) * pageSize,
     );
     const bets = rows.map((b) => {
       const mine = b.creator_id === u.id;
@@ -226,7 +235,7 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
         payout: b.winner_id === u.id ? b.payout : 0,
       };
     });
-    return { data: { bets } };
+    return { data: { bets, page, pages, total } };
   });
 
   route('GET', '/api/wallet', async (req, res, { query }) => {
