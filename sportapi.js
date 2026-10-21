@@ -3,6 +3,7 @@ import { selectFeaturedMatch } from './featured.js';
 import { fetchApiSportsFixtures, dropDuplicates } from './apisports.js';
 import { settleMatch } from './bets.js';
 import { NOW, tx } from './db.js';
+import { normalizeUtcTimestamp, parseUtcDate } from '../time.mjs';
 
 const BASE = 'https://sportapi.ai/api';
 
@@ -36,7 +37,7 @@ export async function upsertFixtures(db, fixtures) {
   for (const f of fixtures) {
     if (!Number.isInteger(f.id) || !f.home_team || !f.away_team) continue;
     rows.set(f.id, [
-      f.id, String(f.date), f.kickoff_utc ?? null, num(f.league_id), f.league_name ?? null,
+      f.id, String(f.date), normalizeUtcTimestamp(f.kickoff_utc), num(f.league_id), f.league_name ?? null,
       String(f.home_team), String(f.away_team), String(f.status ?? 'Scheduled'),
       f.minute == null ? null : String(f.minute), num(f.home_score), num(f.away_score),
       num(f.result), num(f.penalty_home), num(f.penalty_away),
@@ -89,7 +90,7 @@ export async function notifyFeaturedMatch(db, date) {
   if (!match) return;
 
   const kickoff = match.kickoff_utc
-    ? new Date(match.kickoff_utc).toLocaleTimeString('fr-FR', { timeZone: 'Africa/Kinshasa', hour: '2-digit', minute: '2-digit' })
+    ? parseUtcDate(match.kickoff_utc).toLocaleTimeString('fr-FR', { timeZone: 'Africa/Kinshasa', hour: '2-digit', minute: '2-digit' })
     : null;
   const body = `${match.home_team} vs ${match.away_team}${match.league_name ? ` · ${match.league_name}` : ''}${kickoff ? ` · ${kickoff}` : ''}`;
   await db.run(
