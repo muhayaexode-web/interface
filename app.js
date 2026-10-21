@@ -116,13 +116,42 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
 
   route('GET', '/api/notifications', async (req, res, { query }) => {
     const user = await requireUser(req);
-    const after = Math.max(0, Number(query.get('after')) || 0);
-    const items = await db.all(
-      'SELECT id, title, body, created_at FROM notifications WHERE user_id = ? AND id > ? ORDER BY id LIMIT 20',
-      user.id, after,
-    );
+    const unread = (await db.get('SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND read = 0', user.id)).count;
+    const afterValue = query.get('after');
     const last = await db.get('SELECT COALESCE(MAX(id), 0) AS id FROM notifications WHERE user_id = ?', user.id);
-    return { data: { items, last: last.id } };
+    if (afterValue !== null) {
+      const after = Number(afterValue);
+      if (!Number.isSafeInteger(after) || after < 0) throw new BizError('Curseur de notification invalide');
+      const items = await db.all(
+        'SELECT id, title, body, read, created_at FROM notifications WHERE user_id = ? AND id > ? ORDER BY id LIMIT 20',
+        user.id, after,
+      );
+      return { data: { items, last: last.id, unread } };
+    }
+    const requestedPage = Number(query.get('page') ?? 1);
+    if (!Number.isSafeInteger(requestedPage) || requestedPage < 1) throw new BizError('Page de notifications invalide');
+    const pageSize = 20;
+    const total = (await db.get('SELECT COUNT(*) AS count FROM notifications WHERE user_id = ?', user.id)).count;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pages);
+    const items = await db.all(
+      `SELECT id, title, body, read, created_at FROM notifications
+       WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+      user.id, pageSize, (page - 1) * pageSize,
+    );
+    return { data: { items, page, pages, total, unread } };
+  });
+  route('POST', '/api/notifications/read', async (req, res, { body }) => {
+    const user = await requireUser(req);
+    if (body.all === true) {
+      await db.run('UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0', user.id);
+    } else {
+      const id = Number(body.id);
+      if (!Number.isSafeInteger(id) || id < 1) throw new BizError('Notification invalide');
+      await db.run('UPDATE notifications SET read = 1 WHERE user_id = ? AND id = ?', user.id, id);
+    }
+    const unread = (await db.get('SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND read = 0', user.id)).count;
+    return { data: { unread } };
   });
 
   route('GET', '/api/activity', async (req) => {
