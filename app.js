@@ -200,17 +200,24 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     return { data: { bets } };
   });
 
-  route('GET', '/api/wallet', async (req) => {
+  route('GET', '/api/wallet', async (req, res, { query }) => {
     const u = await requireUser(req);
+    const requestedPage = Number(query.get('page') ?? 1);
+    if (!Number.isSafeInteger(requestedPage) || requestedPage < 1) throw new BizError('Page invalide');
+    const pageSize = 10;
     const ledger = await db.all(
       'SELECT type, amount, balance_after, created_at FROM ledger WHERE user_id = ? ORDER BY id DESC LIMIT 50',
       u.id,
     );
+    const paymentCount = (await db.get('SELECT COUNT(*) AS count FROM payments WHERE user_id = ?', u.id)).count;
+    const paymentPages = Math.max(1, Math.ceil(paymentCount / pageSize));
+    const paymentPage = Math.min(requestedPage, paymentPages);
     const payments = await db.all(
-      'SELECT id, kind, amount, network, status, checkout_url, created_at FROM payments WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
-      u.id,
+      `SELECT id, kind, amount, network, status, checkout_url, created_at
+       FROM payments WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      u.id, pageSize, (paymentPage - 1) * pageSize,
     );
-    return { data: { balance: u.balance, ledger, payments } };
+    return { data: { balance: u.balance, ledger, payments, paymentPage, paymentPages, paymentCount } };
   });
   const paymentView = (p) => ({ id: p.id, status: p.status, checkoutUrl: p.checkout_url, kind: p.kind, amount: p.amount });
   route('POST', '/api/wallet/deposit', async (req, res, { body }) => {
