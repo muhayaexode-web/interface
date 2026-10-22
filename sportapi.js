@@ -3,7 +3,7 @@ import { selectFeaturedMatch } from './featured.js';
 import { fetchApiSportsFixtures, dropDuplicates } from './apisports.js';
 import { settleMatch } from './bets.js';
 import { NOW, tx } from './db.js';
-import { normalizeUtcTimestamp, parseUtcDate } from '../time.mjs';
+import { normalizeUtcTimestamp, parseUtcDate } from './time.mjs';
 
 const BASE = 'https://sportapi.ai/api';
 
