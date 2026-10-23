@@ -6,7 +6,16 @@ import { config } from './config.js';
 import { AGO, BizError } from './db.js';
 import { clearCookie, login, makeToken, register, sessionCookie, throttle, userFromRequest } from './auth.js';
 import { acceptOffer, cancelOffer, commissionOn, createOffer, opposite, voidMatch } from './bets.js';
-import { reconcile, startDeposit, startWithdrawal } from './wallet.js';
+import {
+  calculateDepositCharge,
+  DEPOSIT_FEE_BASIS_POINTS,
+  DEPOSIT_NET_BONUS,
+  reconcile,
+  reconcileCallback,
+  startDeposit,
+  startWithdrawal,
+  validatePawapayCallback,
+} from './pawapay-wallet.js';
 import { dateOffset, syncDate } from './sportapi.js';
 
 const MIME = {
@@ -99,6 +108,8 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     commissionPercent: config.commissionPercent, odds: 2 - config.commissionPercent / 100,
     minStake: config.minStake, maxStake: config.maxStake,
     minDeposit: config.minDeposit, minWithdrawal: config.minWithdrawal, currency: config.currency,
+    depositFeeBasisPoints: DEPOSIT_FEE_BASIS_POINTS,
+    depositNetBonus: DEPOSIT_NET_BONUS,
     networks: config.networks,
   });
 
@@ -175,6 +186,51 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
         items: rows.map((r) => ({
           id: r.id, match: `${r.home_team} vs ${r.away_team}`, stake: r.stake,
           state: r.status === 'open' ? 'waiting' : 'matched',
+        })),
+      },
+    };
+  });
+
+  route('GET', '/api/bets/open', async (req, res, { query }) => {
+    const user = await requireUser(req);
+    const term = `%${(query.get('q') ?? '').trim().toLowerCase().slice(0, 50)}%`;
+    const tab = query.get('tab') ?? 'all';
+    if (!['all', 'live'].includes(tab)) throw new BizError('Filtre de paris invalide');
+    const rows = await db.all(
+      `SELECT b.id, b.match_id, b.creator_id, b.creator_side, b.stake,
+              m.home_team, m.away_team, m.league_name, m.status AS match_status,
+              m.minute, m.home_score, m.away_score, m.kickoff_utc, u.email
+       FROM bets b
+       JOIN matches m ON m.id = b.match_id
+       JOIN users u ON u.id = b.creator_id
+       WHERE b.status = 'open' AND m.status IN ('Scheduled','LIVE')
+         AND (? = 'all' OR m.status = 'LIVE')
+         AND (? = '%%' OR lower(m.home_team || ' ' || m.away_team || ' ' || COALESCE(m.league_name, ''))
+              LIKE ? OR lower(u.email) LIKE ?)
+       ORDER BY CASE WHEN m.status = 'LIVE' THEN 0 ELSE 1 END,
+                m.kickoff_utc ASC, b.created_at DESC
+       LIMIT 100`,
+      tab, term, term, term,
+    );
+    return {
+      data: {
+        items: rows.map((offer) => ({
+          id: offer.id,
+          matchId: offer.match_id,
+          home: offer.home_team,
+          away: offer.away_team,
+          league: offer.league_name,
+          matchStatus: offer.match_status,
+          minute: offer.minute,
+          homeScore: offer.home_score,
+          awayScore: offer.away_score,
+          kickoff: offer.kickoff_utc,
+          stake: offer.stake,
+          creatorSide: offer.creator_side,
+          takeSide: opposite(offer.creator_side),
+          by: maskEmail(offer.email),
+          mine: offer.creator_id === user.id,
+          winNet: 2 * offer.stake - commissionOn(offer.stake),
         })),
       },
     };
@@ -264,7 +320,14 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     );
     return { data: { balance: u.balance, ledger, payments, paymentPage, paymentPages, paymentCount } };
   });
-  const paymentView = (p) => ({ id: p.id, status: p.status, checkoutUrl: p.checkout_url, kind: p.kind, amount: p.amount });
+  const paymentView = (p) => ({
+    id: p.id,
+    status: p.status,
+    checkoutUrl: p.checkout_url,
+    kind: p.kind,
+    amount: p.amount,
+    chargeAmount: p.kind === 'deposit' ? calculateDepositCharge(p.amount) : undefined,
+  });
   route('POST', '/api/wallet/deposit', async (req, res, { body }) => {
     const u = await requireUser(req);
     const p = await startDeposit(db, sas, u, { amount: Number(body.amount), network: body.network, phone: body.phone });
@@ -281,6 +344,15 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     if (!p) throw new BizError('Paiement introuvable', 404);
     p = await reconcile(db, sas, p);
     return { data: paymentView(p) };
+  });
+  route('POST', '/api/pawapay/callback', async (req, res, { body }) => {
+    const callback = validatePawapayCallback(body);
+    setImmediate(() => {
+      reconcileCallback(db, sas, callback).catch((err) => {
+        console.error('[PawaPay callback]', err.message);
+      });
+    });
+    return { data: { received: true } };
   });
 
   route('GET', '/api/admin/stats', async (req) => {
