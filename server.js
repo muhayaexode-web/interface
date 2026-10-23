@@ -4,8 +4,11 @@ import { createApp } from './app.js';
 import { makePawapay, startPaymentsLoop } from './pawapay-wallet.js';
 import { startSyncLoop } from './sportapi.js';
 
-if (!config.pawapayToken || !config.sportApiKey) {
-  console.warn('Attention : PAWAPAY_API_TOKEN ou SPORTAPI_KEY manquante dans backend/.env');
+if (!config.pawapayToken) {
+  console.warn('Attention : PAWAPAY_API_TOKEN manquante dans la configuration Render');
+}
+if (!config.sportApiKey) {
+  console.warn('Attention : SPORTAPI_KEY manquante dans la configuration Render');
 }
 
 const db = await openDb({ schema: config.databaseSchema || undefined });
