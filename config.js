@@ -20,7 +20,8 @@ export const config = {
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   sessionSecret: process.env.SESSION_SECRET || '',
   adminCode: process.env.ADMIN_CODE || '',
-  saspayKey: process.env.SASPAY_API_KEY || '',
+  pawapayToken: process.env.PAWAPAY_API_TOKEN || '',
+  pawapayBaseUrl: (process.env.PAWAPAY_API_URL || 'https://api.sandbox.pawapay.io').replace(/\/+$/, ''),
   sportApiKey: process.env.SPORTAPI_KEY || '',
   newApiKey: process.env.NEW_API || '',
   footballProvider: process.env.FOOTBALL_PROVIDER || (process.env.NEW_API ? 'both' : 'sportapi'),
@@ -33,6 +34,7 @@ export const config = {
   currency: 'CDF',
   networks: { airtel_cd: 'Airtel Money', orange_cd: 'Orange Money', vodacom_cd: 'M-Pesa (Vodacom)' },
   databaseUrl: process.env.DATABASE_URL || '',
+  databaseSchema: process.env.DATABASE_SCHEMA || '',
   publicDir: path.join(ROOT, '..', 'dist'),
 };
 
