@@ -226,7 +226,9 @@ export async function reconcile(db, pawa, payment, log = console) {
     const status = String(result.status ?? '').toUpperCase();
     if (['COMPLETED', 'SUCCESS'].includes(status)) await markSuccess(db, payment);
     else if (FAIL.has(status)) await markFailed(db, payment, payment.kind === 'withdrawal');
-    else if (status === 'NOT_FOUND') await safeInitiate(db, pawa, payment);
+    else if (status === 'NOT_FOUND') {
+      log.warn('[PawaPay reconciliation] Paiement introuvable chez le fournisseur; nouvelle initiation suspendue pour éviter un doublon');
+    }
     else if (
       payment.kind === 'deposit'
       && Date.now() - Date.parse(`${payment.created_at.replace(' ', 'T')}Z`) > 24 * 3600_000
