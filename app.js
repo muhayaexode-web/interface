@@ -7,14 +7,8 @@ import { AGO, BizError } from './db.js';
 import { clearCookie, login, makeToken, register, sessionCookie, throttle, userFromRequest } from './auth.js';
 import { acceptOffer, cancelOffer, commissionOn, createOffer, opposite, voidMatch } from './bets.js';
 import {
-  calculateDepositCharge,
   DEPOSIT_FEE_BASIS_POINTS,
   DEPOSIT_NET_BONUS,
-  reconcile,
-  reconcileCallback,
-  startDeposit,
-  startWithdrawal,
-  validatePawapayCallback,
 } from './pawapay-wallet.js';
 import { dateOffset, syncDate } from './sportapi.js';
 
@@ -64,7 +58,7 @@ async function readJson(req) {
   }
 }
 
-export function createApp(db, sas, { syncFn = syncDate } = {}) {
+export function createApp(db, payments, { syncFn = syncDate } = {}) {
   const requireUser = async (req) => {
     const u = await userFromRequest(db, req);
     if (!u) throw new BizError('Connexion requise', 401);
@@ -108,8 +102,8 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     commissionPercent: config.commissionPercent, odds: 2 - config.commissionPercent / 100,
     minStake: config.minStake, maxStake: config.maxStake,
     minDeposit: config.minDeposit, minWithdrawal: config.minWithdrawal, currency: config.currency,
-    depositFeeBasisPoints: DEPOSIT_FEE_BASIS_POINTS,
-    depositNetBonus: DEPOSIT_NET_BONUS,
+    depositFeeBasisPoints: payments.provider === 'pawapay' ? DEPOSIT_FEE_BASIS_POINTS : 0,
+    depositNetBonus: payments.provider === 'pawapay' ? DEPOSIT_NET_BONUS : 0,
     networks: config.networks,
   });
 
@@ -326,29 +320,33 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     checkoutUrl: p.checkout_url,
     kind: p.kind,
     amount: p.amount,
-    chargeAmount: p.kind === 'deposit' ? calculateDepositCharge(p.amount) : undefined,
+    chargeAmount: payments.chargeAmount(p),
   });
   route('POST', '/api/wallet/deposit', async (req, res, { body }) => {
     const u = await requireUser(req);
-    const p = await startDeposit(db, sas, u, { amount: Number(body.amount), network: body.network, phone: body.phone });
+    const p = await payments.startDeposit(u, {
+      amount: Number(body.amount), network: body.network, phone: body.phone,
+    });
     return { status: 201, data: paymentView(p) };
   });
   route('POST', '/api/wallet/withdraw', async (req, res, { body }) => {
     const u = await requireUser(req);
-    const p = await startWithdrawal(db, sas, u, { amount: Number(body.amount), network: body.network, phone: body.phone });
+    const p = await payments.startWithdrawal(u, {
+      amount: Number(body.amount), network: body.network, phone: body.phone,
+    });
     return { status: 201, data: paymentView(p) };
   });
   route('GET', '/api/wallet/payments/:id', async (req, res, { params }) => {
     const u = await requireUser(req);
     let p = await db.get('SELECT * FROM payments WHERE id = ? AND user_id = ?', params.id, u.id);
     if (!p) throw new BizError('Paiement introuvable', 404);
-    p = await reconcile(db, sas, p);
+    p = await payments.reconcile(p);
     return { data: paymentView(p) };
   });
   route('POST', '/api/pawapay/callback', async (req, res, { body }) => {
-    const callback = validatePawapayCallback(body);
+    const callback = payments.validatePawapayCallback(body);
     setImmediate(() => {
-      reconcileCallback(db, sas, callback).catch((err) => {
+      payments.reconcilePawapayCallback(callback).catch((err) => {
         console.error('[PawaPay callback]', err.message);
       });
     });
