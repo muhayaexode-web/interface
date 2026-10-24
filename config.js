@@ -14,12 +14,21 @@ const int = (name, def) => {
   return Number.isFinite(n) ? n : def;
 };
 
+const paymentProvider = (
+  process.env.api_check_paiement ?? process.env.API_CHECK_PAIEMENT ?? 'pawapay'
+).trim().toLowerCase();
+if (!['saspay', 'pawapay'].includes(paymentProvider)) {
+  throw new Error('api_check_paiement doit être égal à saspay ou pawapay');
+}
+
 export const config = {
   port: int('PORT', 3000),
   allowedOrigins: (process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean),
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   sessionSecret: process.env.SESSION_SECRET || '',
   adminCode: process.env.ADMIN_CODE || '',
+  apiCheckPaiement: paymentProvider,
+  saspayKey: process.env.SASPAY_API_KEY || '',
   pawapayToken: process.env.PAWAPAY_API_TOKEN || '',
   pawapayBaseUrl: (process.env.PAWAPAY_API_URL || 'https://api.sandbox.pawapay.io').replace(/\/+$/, ''),
   sportApiKey: process.env.SPORTAPI_KEY || '',
