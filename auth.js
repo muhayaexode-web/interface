@@ -49,7 +49,7 @@ export const clearCookie = () => `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/;
 export async function userFromRequest(db, req) {
   const raw = (req.headers.cookie ?? '').split(';').map((s) => s.trim()).find((s) => s.startsWith(`${COOKIE}=`));
   const uid = raw ? readToken(raw.slice(COOKIE.length + 1)) : null;
-  return uid ? (await db.get('SELECT id, email, role, balance FROM users WHERE id = ?', uid)) ?? null : null;
+  return uid ? (await db.get('SELECT id, email, role, balance, tv_subscription_until FROM users WHERE id = ?', uid)) ?? null : null;
 }
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
