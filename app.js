@@ -1,19 +1,22 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import dns from 'node:dns/promises';
-import https from 'node:https';
-import { isIP } from 'node:net';
-import ffmpegPath from 'ffmpeg-static';
-import { config, ROOT } from './config.js';
+import { config } from './config.js';
 import { AGO, BizError } from './db.js';
 import { clearCookie, login, makeToken, register, sessionCookie, throttle, userFromRequest } from './auth.js';
 import { acceptOffer, cancelOffer, commissionOn, createOffer, opposite, voidMatch } from './bets.js';
-import { reconcile, startDeposit, startWithdrawal } from './wallet.js';
+import {
+  DEPOSIT_FEE_BASIS_POINTS,
+  DEPOSIT_NET_BONUS,
+} from './pawapay-wallet.js';
 import { assertTvAccess, subscribeTv, TV_SUBSCRIPTION_PRICE } from './tv.js';
+import {
+  expireTvStreams,
+  getTvChannels,
+  handleTvStreamRequest,
+  stopAllTvStreams,
+} from './tv-stream.js';
 import { dateOffset, syncDate } from './sportapi.js';
 
 const MIME = {
@@ -39,432 +42,6 @@ const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
 };
 
-const MAX_PLAYLIST_BYTES = 1_048_576;
-const STREAM_TOKEN_TTL_MS = 2 * 60_000;
-const TRANSCODE_SESSION_TTL_MS = 15 * 60_000;
-const streamTokens = new Map();
-const internalStreamTokens = new Map();
-const activeTranscodes = new Set();
-const transcodeSessions = new Map();
-const MAX_ACTIVE_TRANSCODES = 2;
-let cachedPlaylist;
-
-function isPublicIpv4(address) {
-  const octets = address.split('.').map(Number);
-  if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
-  const value = (((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0);
-  const blocked = [
-    ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
-    ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
-    ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
-    ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
-  ];
-  return !blocked.some(([network, bits]) => {
-    const net = network.split('.').map(Number);
-    const base = (((net[0] << 24) | (net[1] << 16) | (net[2] << 8) | net[3]) >>> 0);
-    const mask = (0xffffffff << (32 - bits)) >>> 0;
-    return (value & mask) === (base & mask);
-  });
-}
-
-function assertAllowedStreamUrl(value, allowedOrigins, allowPlaylistReference = false) {
-  let upstream;
-  try {
-    upstream = new URL(value);
-  } catch {
-    throw new BizError('URL de flux invalide');
-  }
-  if (!['http:', 'https:'].includes(upstream.protocol) || upstream.username || upstream.password
-      || (isIP(upstream.hostname) && !isPublicIpv4(upstream.hostname))) {
-    throw new BizError('Cette source n’est pas autorisée par la playlist', 403);
-  }
-  if (!allowedOrigins.has(upstream.origin)) {
-    if (!allowPlaylistReference) throw new BizError('Cette source n’est pas autorisée par la playlist', 403);
-    allowedOrigins.add(upstream.origin);
-  }
-  upstream.hash = '';
-  return upstream;
-}
-
-async function getPlaylistData() {
-  const playlistPath = path.join(ROOT, 'fr.m3u');
-  let stat;
-  try {
-    stat = await fs.promises.stat(playlistPath);
-  } catch (error) {
-    if (error.code === 'ENOENT') throw new BizError('Le fichier backend/fr.m3u est introuvable', 503);
-    throw error;
-  }
-  if (stat.size > MAX_PLAYLIST_BYTES) throw new BizError('La playlist dépasse la limite de 1 Mio', 413);
-  if (cachedPlaylist?.mtimeMs === stat.mtimeMs) return cachedPlaylist;
-
-  const text = (await fs.promises.readFile(playlistPath, 'utf8')).replace(/^\uFEFF/, '');
-  const channels = [];
-  const origins = new Set();
-  let title = '';
-  let userAgent = '';
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (line.startsWith('#EXTINF:')) {
-      title = line.slice(line.lastIndexOf(',') + 1).trim();
-    } else if (line.startsWith('#EXTVLCOPT:http-user-agent=')) {
-      userAgent = line.slice('#EXTVLCOPT:http-user-agent='.length).trim().slice(0, 256);
-    } else if (line.startsWith('#')) {
-      continue;
-    } else {
-      try {
-        const url = new URL(line);
-        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) continue;
-        origins.add(url.origin);
-        channels.push({ title: title || `Flux ${channels.length + 1}`, url: url.href, userAgent });
-        title = '';
-        userAgent = '';
-      } catch {
-        title = '';
-        userAgent = '';
-      }
-    }
-  }
-  if (!channels.length) throw new BizError('Aucun flux HTTP(S) valide dans backend/fr.m3u', 422);
-  cachedPlaylist = { mtimeMs: stat.mtimeMs, channels, origins };
-  return cachedPlaylist;
-}
-
-function createStreamToken(url, userId, allowedOrigins, userAgent = '') {
-  const token = crypto.randomBytes(24).toString('hex');
-  const now = Date.now();
-  for (const [key, value] of streamTokens) {
-    if (value.expiresAt <= now) streamTokens.delete(key);
-  }
-  if (streamTokens.size >= 20_000) throw new BizError('Trop de requêtes de flux actives', 503);
-  streamTokens.set(token, {
-    url: url.href,
-    userId,
-    allowedOrigins,
-    userAgent: /^[\x20-\x7e]{1,256}$/.test(userAgent) ? userAgent : '',
-    expiresAt: now + STREAM_TOKEN_TTL_MS,
-  });
-  return `/api/stream/${token}`;
-}
-
-async function getStreamUser(req, db) {
-  const internalToken = req.headers['x-berfoot-internal'];
-  if (typeof internalToken === 'string') {
-    const userId = internalStreamTokens.get(internalToken);
-    if (userId) {
-      return (await db.get('SELECT id, email, role, balance FROM users WHERE id = ?', userId)) ?? null;
-    }
-  }
-  return userFromRequest(db, req);
-}
-
-async function openUpstream(upstream, range, userAgent, allowedOrigins) {
-  const addresses = isIP(upstream.hostname)
-    ? [{ address: upstream.hostname, family: 4 }]
-    : await dns.lookup(upstream.hostname, { family: 4, all: true, verbatim: true });
-  if (!addresses.length || addresses.some(({ address }) => !isPublicIpv4(address))) {
-    throw new BizError('Adresse de flux refusée', 403);
-  }
-  const address = addresses[0];
-  return new Promise((resolve, reject) => {
-    const headers = { 'User-Agent': userAgent || 'BerFoot-Stream-Relay/1.0', Accept: '*/*' };
-    if (range && /^bytes=\d*-\d*(,\d*-\d*)*$/.test(range) && range.length <= 100) headers.Range = range;
-    const transport = upstream.protocol === 'https:' ? https : http;
-    const request = transport.request(upstream, {
-      method: 'GET',
-      headers,
-      lookup: (_hostname, options, callback) => {
-        const resolved = { address: address.address, family: address.family || 4 };
-        if (options?.all) callback(null, [resolved]);
-        else callback(null, resolved.address, resolved.family);
-      },
-      ...(upstream.protocol === 'https:' ? { servername: upstream.hostname } : {}),
-      timeout: 30_000,
-    }, resolve);
-    request.once('timeout', () => request.destroy(new Error('Délai de flux dépassé')));
-    request.once('error', reject);
-    request.end();
-  });
-}
-
-function proxiedResourceUrl(resource, base, userId, allowedOrigins, userAgent) {
-  const absolute = new URL(resource, base);
-  assertAllowedStreamUrl(absolute.href, allowedOrigins, true);
-  return createStreamToken(absolute, userId, allowedOrigins, userAgent);
-}
-
-function rewriteHlsManifest(text, base, userId, allowedOrigins, userAgent) {
-  return text.split(/\r?\n/).map((line) => {
-    if (line.startsWith('#')) {
-      return line.replace(/URI=(?:"([^"]+)"|'([^']+)'|([^,\s]+))/g, (attribute, doubleQuoted, singleQuoted, bare) => {
-        const uri = doubleQuoted ?? singleQuoted ?? bare;
-        const quote = doubleQuoted ? '"' : singleQuoted ? "'" : '';
-        return `URI=${quote}${proxiedResourceUrl(uri, base, userId, allowedOrigins, userAgent)}${quote}`;
-      });
-    }
-    if (!line.trim()) return line;
-    return proxiedResourceUrl(line.trim(), base, userId, allowedOrigins, userAgent);
-  }).join('\n');
-}
-
-async function relayStream(req, res, db, token) {
-  const user = await getStreamUser(req, db);
-  if (!user) throw new BizError('Connexion requise', 401);
-  await assertTvAccess(db, user);
-  let source;
-  if (token.startsWith('channel/')) {
-    const channelId = Number(token.slice('channel/'.length));
-    const playlist = await getPlaylistData();
-    const channel = Number.isSafeInteger(channelId) && channelId >= 0
-      ? playlist.channels[channelId]
-      : null;
-    if (!channel) throw new BizError('Chaîne introuvable', 404);
-    source = {
-      url: channel.url,
-      allowedOrigins: new Set(playlist.origins),
-      userAgent: channel.userAgent,
-    };
-  } else {
-    source = streamTokens.get(token);
-    if (!source || source.expiresAt <= Date.now() || source.userId !== user.id) {
-      streamTokens.delete(token);
-      throw new BizError('Lien de flux expiré ou invalide', 404);
-    }
-    source.expiresAt = Date.now() + STREAM_TOKEN_TTL_MS;
-  }
-  let upstream = assertAllowedStreamUrl(source.url, source.allowedOrigins);
-  let response = await openUpstream(upstream, req.headers.range, source.userAgent, source.allowedOrigins);
-  for (let redirects = 0; [301, 302, 303, 307, 308].includes(response.statusCode) && redirects < 3; redirects += 1) {
-    const location = response.headers.location;
-    response.destroy();
-    if (!location) throw new BizError('Redirection du flux invalide', 502);
-    upstream = assertAllowedStreamUrl(new URL(location, upstream).href, source.allowedOrigins, true);
-    response = await openUpstream(upstream, req.headers.range, source.userAgent, source.allowedOrigins);
-  }
-  if (response.statusCode !== 200 && response.statusCode !== 206) {
-    const statusCode = response.statusCode;
-    response.destroy();
-    throw new BizError(`La source du flux a répondu ${statusCode}`, 502);
-  }
-  const contentType = String(response.headers['content-type'] ?? '').split(';')[0].toLowerCase();
-  const isPlaylist = /(?:mpegurl|m3u8)/i.test(contentType) || /\.m3u8?$/i.test(upstream.pathname);
-
-  if (isPlaylist) {
-    const chunks = [];
-    let size = 0;
-    for await (const chunk of response) {
-      size += chunk.length;
-      if (size > MAX_PLAYLIST_BYTES) {
-        response.destroy();
-        throw new BizError('Playlist trop volumineuse', 413);
-      }
-      chunks.push(chunk);
-    }
-    let body = Buffer.concat(chunks).toString('utf8');
-    if (body.includes('#EXT-X-')) {
-      body = rewriteHlsManifest(body, upstream, user.id, source.allowedOrigins, source.userAgent);
-    }
-    res.writeHead(200, {
-      ...SECURITY_HEADERS,
-      'Content-Type': contentType || 'application/vnd.apple.mpegurl',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-    }).end(body);
-    return;
-  }
-
-  const headers = {
-    ...SECURITY_HEADERS,
-    'Content-Type': contentType || 'application/octet-stream',
-    'Cache-Control': 'no-store',
-    'Accept-Ranges': response.headers['accept-ranges'] ?? 'bytes',
-  };
-  if (response.statusCode === 206 && response.headers['content-range']) headers['Content-Range'] = response.headers['content-range'];
-  if (response.headers['content-length']) headers['Content-Length'] = response.headers['content-length'];
-  res.writeHead(response.statusCode, headers);
-  res.on('close', () => response.destroy());
-  response.pipe(res);
-}
-
-async function stopTranscodeSession(sessionId) {
-  const session = transcodeSessions.get(sessionId);
-  if (!session) return;
-  transcodeSessions.delete(sessionId);
-  activeTranscodes.delete(session.child);
-  internalStreamTokens.delete(session.internalToken);
-  if (session.child.exitCode === null && session.child.signalCode === null) {
-    const closed = new Promise((resolve) => session.child.once('close', resolve));
-    if (!session.child.killed) session.child.kill();
-    await closed;
-  }
-  await fs.promises.rm(session.directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-}
-
-function transcodeErrorMessage(session, fallback) {
-  const stderr = session.stderr.trim();
-  if (/Server returned 403 Forbidden/i.test(stderr)) {
-    return 'Le relais a refusé cette source (403). Consultez les journaux du serveur pour connaître la règle appliquée.';
-  }
-  return stderr.slice(-600) || fallback;
-}
-
-async function waitForHlsPlaylist(session) {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    if (session.child.exitCode !== null || session.child.signalCode !== null) {
-      throw new BizError(transcodeErrorMessage(session, 'La source n’a pas pu être convertie en HLS'), 502);
-    }
-    if (session.requestAborted) throw new BizError('Requête de lecture annulée', 499);
-    try {
-      const master = await fs.promises.readFile(path.join(session.directory, 'playlist.m3u8'), 'utf8');
-      const lowPlaylist = await fs.promises.readFile(path.join(session.directory, 'stream_0.m3u8'), 'utf8');
-      if (master.includes('#EXT-X-STREAM-INF') && lowPlaylist.includes('#EXTINF:')
-          && /stream_0_\d+\.ts/.test(lowPlaylist)) return;
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new BizError(transcodeErrorMessage(session, 'Délai dépassé en attendant les premiers segments vidéo'), 504);
-}
-
-async function startTranscode(req, db, server, channelId) {
-  const user = await userFromRequest(db, req);
-  if (!user) throw new BizError('Connexion requise', 401);
-  await assertTvAccess(db, user);
-  if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
-    throw new BizError('Le binaire FFmpeg est indisponible sur ce serveur', 503);
-  }
-  const playlist = await getPlaylistData();
-  const channel = playlist.channels[channelId];
-  if (!channel) throw new BizError('Chaîne introuvable', 404);
-  for (const [sessionId, session] of transcodeSessions) {
-    if (session.userId === user.id) await stopTranscodeSession(sessionId);
-  }
-  if (activeTranscodes.size >= MAX_ACTIVE_TRANSCODES) {
-    throw new BizError('Le nombre maximal de lectures simultanées est atteint', 429);
-  }
-
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new BizError('Serveur de lecture indisponible', 503);
-  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'berfoot-stream-'));
-  const sessionId = crypto.randomBytes(24).toString('hex');
-  const internalToken = crypto.randomBytes(32).toString('hex');
-  internalStreamTokens.set(internalToken, user.id);
-  const session = {
-    userId: user.id,
-    channelId,
-    directory,
-    internalToken,
-    expiresAt: Date.now() + TRANSCODE_SESSION_TTL_MS,
-    requestAborted: false,
-    stderr: '',
-    child: null,
-  };
-  const inputUrl = `http://127.0.0.1:${address.port}/api/stream/channel/${channelId}`;
-  let child;
-  try {
-    child = spawn(ffmpegPath, [
-      '-hide_banner', '-loglevel', 'error', '-nostdin',
-      '-protocol_whitelist', 'http,https,tcp,tls,crypto',
-      '-fflags', '+nobuffer',
-      '-analyzeduration', '2000000', '-probesize', '5000000',
-      '-rw_timeout', '20000000',
-      '-headers', `X-BerFoot-Internal: ${internalToken}\r\n`,
-      '-i', inputUrl,
-      '-filter_complex',
-      '[0:v:0]split=2[v720src][v360src];[v720src]scale=w=min(1280\\,iw):h=min(720\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2[v720];[v360src]scale=w=min(640\\,iw):h=min(360\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2[v360]',
-      '-map', '[v360]', '-map', '0:a:0?', '-map', '[v720]', '-map', '0:a:0?',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-      '-pix_fmt', 'yuv420p', '-g', '48',
-      '-threads:v:0', '1', '-threads:v:1', '2',
-      '-b:v:0', '250k', '-maxrate:v:0', '300k', '-bufsize:v:0', '500k',
-      '-b:v:1', '1500k', '-maxrate:v:1', '1800k', '-bufsize:v:1', '3000k',
-      '-c:a', 'libmp3lame',
-      '-b:a:0', '48k', '-ac:a:0', '1',
-      '-b:a:1', '96k', '-ac:a:1', '2', '-ar', '44100',
-      '-force_key_frames', 'expr:gte(t,n_forced*1)',
-      '-f', 'hls', '-hls_time', '2', '-hls_list_size', '8',
-      '-hls_flags', 'delete_segments+append_list+omit_endlist+independent_segments',
-      '-var_stream_map', 'v:0,a:0 v:1,a:1',
-      '-master_pl_name', 'playlist.m3u8',
-      '-hls_segment_filename', path.join(directory, 'stream_%v_%06d.ts'),
-      path.join(directory, 'stream_%v.m3u8'),
-    ], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
-  } catch (error) {
-    internalStreamTokens.delete(internalToken);
-    await fs.promises.rm(directory, { recursive: true, force: true });
-    throw error;
-  }
-  session.child = child;
-  activeTranscodes.add(child);
-  transcodeSessions.set(sessionId, session);
-  child.stderr.on('data', (chunk) => { session.stderr = `${session.stderr}${chunk}`.slice(-2000); });
-  child.once('close', () => { void stopTranscodeSession(sessionId); });
-  const onAbort = () => { session.requestAborted = true; };
-  req.once('aborted', onAbort);
-  try {
-    await waitForHlsPlaylist(session);
-    if (session.requestAborted) throw new BizError('Requête de lecture annulée', 499);
-    session.expiresAt = Date.now() + TRANSCODE_SESSION_TTL_MS;
-    return { url: `/api/transcode/session/${sessionId}/playlist.m3u8` };
-  } catch (error) {
-    await stopTranscodeSession(sessionId);
-    throw error;
-  } finally {
-    req.off('aborted', onAbort);
-  }
-}
-
-async function serveTranscodeAsset(req, res, db, sessionId, filename) {
-  const user = await userFromRequest(db, req);
-  if (!user) throw new BizError('Connexion requise', 401);
-  await assertTvAccess(db, user);
-  const session = transcodeSessions.get(sessionId);
-  if (!session || session.expiresAt <= Date.now() || session.userId !== user.id) {
-    await stopTranscodeSession(sessionId);
-    throw new BizError('Session de lecture expirée', 404);
-  }
-  if (!/^(?:playlist|stream_[01])\.m3u8$/.test(filename)
-      && !/^stream_[01]_\d+\.ts$/.test(filename)) {
-    throw new BizError('Fichier de lecture invalide', 404);
-  }
-  session.expiresAt = Date.now() + TRANSCODE_SESSION_TTL_MS;
-  const file = path.join(session.directory, filename);
-  if (filename.endsWith('.m3u8')) {
-    let manifest;
-    try {
-      manifest = await fs.promises.readFile(file, 'utf8');
-    } catch (error) {
-      if (error.code === 'ENOENT') throw new BizError('Playlist HLS indisponible', 404);
-      throw error;
-    }
-    const body = manifest.split(/\r?\n/).map((line) => (
-      /^(?:stream_[01]\.m3u8|stream_[01]_\d+\.ts)$/.test(line)
-        ? `/api/transcode/session/${sessionId}/${line}`
-        : line
-    )).join('\n');
-    res.writeHead(200, {
-      ...SECURITY_HEADERS,
-      'Content-Type': 'application/vnd.apple.mpegurl',
-      'Cache-Control': 'no-store',
-    }).end(body);
-    return;
-  }
-  res.writeHead(200, {
-    ...SECURITY_HEADERS,
-    'Content-Type': 'video/mp2t',
-    'Cache-Control': 'no-store',
-  });
-  const stream = fs.createReadStream(file);
-  stream.on('error', (error) => {
-    if (error.code === 'ENOENT' && !res.headersSent) res.writeHead(404).end();
-    else if (!res.destroyed) res.destroy(error);
-  });
-  stream.pipe(res);
-}
-
 const maskEmail = (e) => {
   const [local, domain] = e.split('@');
   return `${local}....${domain.slice(-3)}`;
@@ -488,7 +65,9 @@ async function readJson(req) {
   }
 }
 
-export function createApp(db, sas, { syncFn = syncDate } = {}) {
+export function createApp(db, payments, { syncFn = syncDate } = {}) {
+  const responseSecurityHeaders = SECURITY_HEADERS;
+
   const requireUser = async (req) => {
     const u = await userFromRequest(db, req);
     if (!u) throw new BizError('Connexion requise', 401);
@@ -535,22 +114,16 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
   route('GET', '/api/playlist', async (req) => {
     const user = await requireUser(req);
     await assertTvAccess(db, user);
-    const playlist = await getPlaylistData();
-    return {
-      data: {
-        channels: playlist.channels.map((channel, id) => ({
-          id,
-          title: channel.title,
-        })),
-      },
-    };
+    return { data: { channels: await getTvChannels() } };
   });
-
   const publicConfig = () => ({
     commissionPercent: config.commissionPercent, odds: 2 - config.commissionPercent / 100,
     minStake: config.minStake, maxStake: config.maxStake,
     minDeposit: config.minDeposit, minWithdrawal: config.minWithdrawal, currency: config.currency,
-    networks: config.networks, tvSubscriptionPrice: TV_SUBSCRIPTION_PRICE,
+    depositFeeBasisPoints: payments.provider === 'pawapay' ? DEPOSIT_FEE_BASIS_POINTS : 0,
+    depositNetBonus: payments.provider === 'pawapay' ? DEPOSIT_NET_BONUS : 0,
+    networks: config.networks,
+    tvSubscriptionPrice: TV_SUBSCRIPTION_PRICE,
   });
 
   route('GET', '/api/matches', async (req, res, { query }) => {
@@ -626,6 +199,51 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
         items: rows.map((r) => ({
           id: r.id, match: `${r.home_team} vs ${r.away_team}`, stake: r.stake,
           state: r.status === 'open' ? 'waiting' : 'matched',
+        })),
+      },
+    };
+  });
+
+  route('GET', '/api/bets/open', async (req, res, { query }) => {
+    const user = await requireUser(req);
+    const term = `%${(query.get('q') ?? '').trim().toLowerCase().slice(0, 50)}%`;
+    const tab = query.get('tab') ?? 'all';
+    if (!['all', 'live'].includes(tab)) throw new BizError('Filtre de paris invalide');
+    const rows = await db.all(
+      `SELECT b.id, b.match_id, b.creator_id, b.creator_side, b.stake,
+              m.home_team, m.away_team, m.league_name, m.status AS match_status,
+              m.minute, m.home_score, m.away_score, m.kickoff_utc, u.email
+       FROM bets b
+       JOIN matches m ON m.id = b.match_id
+       JOIN users u ON u.id = b.creator_id
+       WHERE b.status = 'open' AND m.status IN ('Scheduled','LIVE')
+         AND (? = 'all' OR m.status = 'LIVE')
+         AND (? = '%%' OR lower(m.home_team || ' ' || m.away_team || ' ' || COALESCE(m.league_name, ''))
+              LIKE ? OR lower(u.email) LIKE ?)
+       ORDER BY CASE WHEN m.status = 'LIVE' THEN 0 ELSE 1 END,
+                m.kickoff_utc ASC, b.created_at DESC
+       LIMIT 100`,
+      tab, term, term, term,
+    );
+    return {
+      data: {
+        items: rows.map((offer) => ({
+          id: offer.id,
+          matchId: offer.match_id,
+          home: offer.home_team,
+          away: offer.away_team,
+          league: offer.league_name,
+          matchStatus: offer.match_status,
+          minute: offer.minute,
+          homeScore: offer.home_score,
+          awayScore: offer.away_score,
+          kickoff: offer.kickoff_utc,
+          stake: offer.stake,
+          creatorSide: offer.creator_side,
+          takeSide: opposite(offer.creator_side),
+          by: maskEmail(offer.email),
+          mine: offer.creator_id === user.id,
+          winNet: 2 * offer.stake - commissionOn(offer.stake),
         })),
       },
     };
@@ -715,23 +333,59 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     );
     return { data: { balance: u.balance, ledger, payments, paymentPage, paymentPages, paymentCount } };
   });
-  const paymentView = (p) => ({ id: p.id, status: p.status, checkoutUrl: p.checkout_url, kind: p.kind, amount: p.amount });
+  const paymentView = (p) => ({
+    id: p.id,
+    status: p.status,
+    checkoutUrl: p.checkout_url,
+    kind: p.kind,
+    amount: p.amount,
+    chargeAmount: payments.chargeAmount(p),
+  });
   route('POST', '/api/wallet/deposit', async (req, res, { body }) => {
     const u = await requireUser(req);
-    const p = await startDeposit(db, sas, u, { amount: Number(body.amount), network: body.network, phone: body.phone });
+    const p = await payments.startDeposit(u, {
+      amount: Number(body.amount), network: body.network, phone: body.phone,
+    });
     return { status: 201, data: paymentView(p) };
   });
   route('POST', '/api/wallet/withdraw', async (req, res, { body }) => {
     const u = await requireUser(req);
-    const p = await startWithdrawal(db, sas, u, { amount: Number(body.amount), network: body.network, phone: body.phone });
+    const p = await payments.startWithdrawal(u, {
+      amount: Number(body.amount), network: body.network, phone: body.phone,
+    });
     return { status: 201, data: paymentView(p) };
   });
   route('GET', '/api/wallet/payments/:id', async (req, res, { params }) => {
     const u = await requireUser(req);
     let p = await db.get('SELECT * FROM payments WHERE id = ? AND user_id = ?', params.id, u.id);
     if (!p) throw new BizError('Paiement introuvable', 404);
-    p = await reconcile(db, sas, p);
+    p = await payments.reconcile(p);
     return { data: paymentView(p) };
+  });
+  route('POST', '/api/pawapay/callback', async (req, res, { body }) => {
+    const callback = payments.validatePawapayCallback(body);
+    setImmediate(() => {
+      payments.reconcilePawapayCallback(callback).catch((err) => {
+        console.error('[PawaPay callback]', err.message);
+      });
+    });
+    return { data: { received: true } };
+  });
+
+  route('GET', '/api/admin/tv-users', async (req, res, { query }) => {
+    await requireAdmin(req);
+    const requestedPage = Number(query.get('page') ?? 1);
+    if (!Number.isSafeInteger(requestedPage) || requestedPage < 1) throw new BizError('Page invalide');
+    const pageSize = 50;
+    const total = (await db.get("SELECT COUNT(*) AS count FROM users WHERE role = 'user'")).count;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pages);
+    const users = await db.all(
+      `SELECT email, balance, tv_subscription_until AS "tvSubscriptionUntil"
+       FROM users WHERE role = 'user' ORDER BY id DESC LIMIT ? OFFSET ?`,
+      pageSize, (page - 1) * pageSize,
+    );
+    return { data: { users, page, pages, total } };
   });
 
   route('GET', '/api/admin/stats', async (req) => {
@@ -776,21 +430,6 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
         winner: b.winner_email,
       };
     });
-    route('GET', '/api/admin/tv-users', async (req, res, { query }) => {
-      await requireAdmin(req);
-      const requestedPage = Number(query.get('page') ?? 1);
-      if (!Number.isSafeInteger(requestedPage) || requestedPage < 1) throw new BizError('Page invalide');
-      const pageSize = 50;
-      const total = (await db.get("SELECT COUNT(*) AS count FROM users WHERE role = 'user'")).count;
-      const pages = Math.max(1, Math.ceil(total / pageSize));
-      const page = Math.min(requestedPage, pages);
-      const users = await db.all(
-        `SELECT email, balance, tv_subscription_until AS "tvSubscriptionUntil"
-         FROM users WHERE role = 'user' ORDER BY id DESC LIMIT ? OFFSET ?`,
-        pageSize, (page - 1) * pageSize,
-      );
-      return { data: { users, page, pages, total } };
-    });
     return {
       data: {
         users, walletTotal, commission, openBets, matchedBets, lockedStakes, matches, pendingPayments,
@@ -813,16 +452,16 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
     const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '');
     const file = path.resolve(config.publicDir, rel);
     if (!file.startsWith(path.resolve(config.publicDir) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
-      res.writeHead(404, SECURITY_HEADERS).end('Not found');
+      res.writeHead(404, responseSecurityHeaders).end('Not found');
       return;
     }
-    const headers = { ...SECURITY_HEADERS, 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' };
+    const headers = { ...responseSecurityHeaders, 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' };
     if (path.extname(file) === '.html') {
       // Parcel injecte un importmap inline : on autorise uniquement ses hashs exacts.
       const html = fs.readFileSync(file, 'utf8');
       const hashes = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)]
         .map((m) => `'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`);
-      if (hashes.length) headers['Content-Security-Policy'] = SECURITY_HEADERS['Content-Security-Policy'].replace("script-src 'self'", `script-src 'self' ${hashes.join(' ')}`);
+      if (hashes.length) headers['Content-Security-Policy'] = contentSecurityPolicy.replace("script-src 'self'", `script-src 'self' ${hashes.join(' ')}`);
       res.writeHead(200, headers).end(html);
       return;
     }
@@ -832,69 +471,7 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
-    const transcodeAssetMatch = /^\/api\/transcode\/session\/([a-f0-9]{48})\/(playlist\.m3u8|stream_[01]\.m3u8|stream_[01]_\d+\.ts)$/.exec(url.pathname);
-    if (transcodeAssetMatch) {
-      try {
-        if (req.method !== 'GET') throw new BizError('Méthode non autorisée', 405);
-        await serveTranscodeAsset(req, res, db, transcodeAssetMatch[1], transcodeAssetMatch[2]);
-      } catch (err) {
-        if (res.headersSent) return res.destroy(err);
-        const status = err instanceof BizError ? err.status : 502;
-        if (!(err instanceof BizError)) console.error('[transcode asset]', err);
-        res.writeHead(status, {
-          ...SECURITY_HEADERS,
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        }).end(JSON.stringify({ error: err instanceof BizError ? err.message : 'Flux vidéo indisponible' }));
-      }
-      return;
-    }
-    const transcodeMatch = /^\/api\/transcode\/channel\/(\d+)$/.exec(url.pathname);
-    if (transcodeMatch) {
-      try {
-        if (req.method !== 'GET') throw new BizError('Méthode non autorisée', 405);
-        const result = await startTranscode(req, db, server, Number(transcodeMatch[1]));
-        res.writeHead(200, {
-          ...SECURITY_HEADERS,
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        }).end(JSON.stringify(result));
-      } catch (err) {
-        if (res.headersSent) return res.destroy(err);
-        const status = err instanceof BizError ? err.status : 502;
-        if (!(err instanceof BizError)) console.error('[transcode]', err);
-        res.writeHead(status, {
-          ...SECURITY_HEADERS,
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        }).end(JSON.stringify({ error: err instanceof BizError ? err.message : 'Conversion vidéo indisponible' }));
-      }
-      return;
-    }
-    if (url.pathname.startsWith('/api/stream/')) {
-      try {
-        if (req.method !== 'GET') throw new BizError('Méthode non autorisée', 405);
-        const token = url.pathname.slice('/api/stream/'.length);
-        if (!/^(?:channel\/\d+|[a-f0-9]{48})$/.test(token)) throw new BizError('Lien de flux invalide', 404);
-        await relayStream(req, res, db, token);
-      } catch (err) {
-        if (res.headersSent) return res.destroy(err);
-        const status = err instanceof BizError ? err.status : 502;
-        const internalToken = req.headers['x-berfoot-internal'];
-        if (err instanceof BizError && status === 403
-            && typeof internalToken === 'string' && internalStreamTokens.has(internalToken)) {
-          console.warn('[stream relay] source interne refusée:', err.message);
-        } else if (!(err instanceof BizError)) {
-          console.error('[stream relay]', err);
-        }
-        res.writeHead(status, {
-          ...SECURITY_HEADERS,
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        }).end(JSON.stringify({ error: err instanceof BizError ? err.message : 'Flux indisponible' }));
-      }
-      return;
-    }
+    if (await handleTvStreamRequest(req, res, db, server, url.pathname)) return;
     if (!url.pathname.startsWith('/api/')) {
       if (req.method !== 'GET') return void res.writeHead(405).end();
       try {
@@ -904,7 +481,7 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
       }
     }
     const send = (status, data, cookie) => {
-      const headers = { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+      const headers = { ...responseSecurityHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
       if (cookie) headers['Set-Cookie'] = cookie;
       res.writeHead(status, headers).end(JSON.stringify(data));
     };
@@ -927,16 +504,11 @@ export function createApp(db, sas, { syncFn = syncDate } = {}) {
       send(500, { error: 'Erreur interne' });
     }
   });
+  const streamExpiryTimer = setInterval(expireTvStreams, 60_000);
+  streamExpiryTimer.unref();
   server.once('close', () => {
-    for (const child of activeTranscodes) {
-      if (typeof child !== 'symbol' && !child.killed) child.kill();
-    }
-    activeTranscodes.clear();
-    internalStreamTokens.clear();
-    for (const session of transcodeSessions.values()) {
-      void fs.promises.rm(session.directory, { recursive: true, force: true });
-    }
-    transcodeSessions.clear();
+    clearInterval(streamExpiryTimer);
+    void stopAllTvStreams();
   });
   return server;
 }
