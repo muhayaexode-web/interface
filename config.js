@@ -44,6 +44,7 @@ export const config = {
   networks: { airtel_cd: 'Airtel Money', orange_cd: 'Orange Money', vodacom_cd: 'M-Pesa (Vodacom)' },
   databaseUrl: process.env.DATABASE_URL || '',
   databaseSchema: process.env.DATABASE_SCHEMA || '',
+  streamPlaylistPath: path.resolve(ROOT, process.env.STREAM_PLAYLIST || 'football.m3u'),
   publicDir: path.join(ROOT, '..', 'dist'),
 };
 
