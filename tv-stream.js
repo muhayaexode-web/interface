@@ -309,10 +309,8 @@ async function waitForHlsPlaylist(session) {
     }
     if (session.requestAborted) throw new BizError('Requête de lecture annulée', 499);
     try {
-      const master = await fs.promises.readFile(path.join(session.directory, 'playlist.m3u8'), 'utf8');
-      const lowPlaylist = await fs.promises.readFile(path.join(session.directory, 'stream_0.m3u8'), 'utf8');
-      if (master.includes('#EXT-X-STREAM-INF') && lowPlaylist.includes('#EXTINF:')
-          && /stream_0_\d+\.ts/.test(lowPlaylist)) return;
+      const playlist = await fs.promises.readFile(path.join(session.directory, 'stream_0.m3u8'), 'utf8');
+      if (playlist.includes('#EXTINF:') && /stream_0_\d+\.ts/.test(playlist)) return;
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
@@ -365,24 +363,12 @@ async function startTranscode(req, db, server, channelId) {
       '-rw_timeout', '20000000',
       '-headers', `X-BerFoot-Internal: ${internalToken}\r\n`,
       '-i', inputUrl,
-      '-filter_complex',
-      '[0:v:0]split=2[v720src][v360src];[v720src]scale=w=min(1280\\,iw):h=min(720\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2[v720];[v360src]scale=w=min(640\\,iw):h=min(360\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2[v360]',
-      '-map', '[v360]', '-map', '0:a:0?', '-map', '[v720]', '-map', '0:a:0?',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-      '-pix_fmt', 'yuv420p', '-g', '48',
-      '-threads:v:0', '1', '-threads:v:1', '2',
-      '-b:v:0', '250k', '-maxrate:v:0', '300k', '-bufsize:v:0', '500k',
-      '-b:v:1', '1500k', '-maxrate:v:1', '1800k', '-bufsize:v:1', '3000k',
-      '-c:a', 'libmp3lame',
-      '-b:a:0', '48k', '-ac:a:0', '1',
-      '-b:a:1', '96k', '-ac:a:1', '2', '-ar', '44100',
-      '-force_key_frames', 'expr:gte(t,n_forced*1)',
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-c', 'copy',
       '-f', 'hls', '-hls_time', '2', '-hls_list_size', '32',
       '-hls_flags', 'delete_segments+append_list+omit_endlist+independent_segments',
-      '-var_stream_map', 'v:0,a:0 v:1,a:1',
-      '-master_pl_name', 'playlist.m3u8',
-      '-hls_segment_filename', path.join(directory, 'stream_%v_%06d.ts'),
-      path.join(directory, 'stream_%v.m3u8'),
+      '-hls_segment_filename', path.join(directory, 'stream_0_%06d.ts'),
+      path.join(directory, 'stream_0.m3u8'),
     ], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   } catch (error) {
     internalStreamTokens.delete(internalToken);
@@ -400,7 +386,7 @@ async function startTranscode(req, db, server, channelId) {
     await waitForHlsPlaylist(session);
     if (session.requestAborted) throw new BizError('Requête de lecture annulée', 499);
     session.expiresAt = Date.now() + TRANSCODE_SESSION_TTL_MS;
-    return { url: `/api/transcode/session/${sessionId}/playlist.m3u8` };
+    return { url: `/api/transcode/session/${sessionId}/stream_0.m3u8` };
   } catch (error) {
     await stopTranscodeSession(sessionId);
     throw error;
