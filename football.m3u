@@ -1,12 +1,6 @@
 #EXTM3U
 #EXTINF:-1 tvg-id="20MinutesTV.fr@SD",20 Minutes TV (1080p)
 https://live-20minutestv.digiteka.com/1961167769/index.m3u8
-#EXTINF:-1 tvg-id="Africa24.fr@SD",Africa 24 (1080p)
-https://africa24.vedge.infomaniak.com/livecast/ik:africa24/manifest.m3u8
-#EXTINF:-1 tvg-id="Africa24English.fr@SD",Africa 24 English (1080p)
-https://edge20.vedge.infomaniak.com/livecast/ik:africa24english/manifest.m3u8
-#EXTINF:-1 tvg-id="Africa24Sport.fr@SD",Africa 24 Sport (1080p)
-https://africa24.vedge.infomaniak.com/livecast/ik:africa24sport/manifest.m3u8
 #EXTINF:-1 tvg-id="AfricanewsEnglish.fr@SD",Africanews English (720p)
 https://cdn-euronews.akamaized.net/live/eds/africanews-en/25049/index.m3u8
 #EXTINF:-1 tvg-id="AfricanewsFrench.fr@SD",Africanews French (720p)
