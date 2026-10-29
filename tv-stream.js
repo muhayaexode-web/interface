@@ -24,6 +24,8 @@ const SECURITY_HEADERS = {
 const MAX_PLAYLIST_BYTES = 1_048_576;
 const STREAM_TOKEN_TTL_MS = 2 * 60_000;
 const TRANSCODE_SESSION_TTL_MS = 15 * 60_000;
+const MAX_PROBE_CHANNELS = 12;
+const PROBE_TIMEOUT_MS = 1200;
 const streamTokens = new Map();
 const internalStreamTokens = new Map();
 const activeTranscodes = new Set();
@@ -31,7 +33,7 @@ const transcodeSessions = new Map();
 const MAX_ACTIVE_TRANSCODES = 2;
 let cachedPlaylist;
 
-async function probeStreamUrl(url, timeoutMs = 5000) {
+async function probeStreamUrl(url, timeoutMs = PROBE_TIMEOUT_MS) {
   const upstream = new URL(url);
   return await new Promise((resolve) => {
     const transport = upstream.protocol === 'https:' ? https : http;
@@ -53,16 +55,18 @@ async function probeStreamUrl(url, timeoutMs = 5000) {
   });
 }
 
-export async function filterUsableChannels(channels, probe = probeStreamUrl) {
+export async function filterUsableChannels(channels, probe = probeStreamUrl, { maxChecks = MAX_PROBE_CHANNELS, timeoutMs = PROBE_TIMEOUT_MS } = {}) {
+  const candidates = channels.slice(0, maxChecks);
   const usable = [];
-  for (const channel of channels) {
+  for (const channel of candidates) {
     try {
-      if (await probe(channel.url)) usable.push(channel);
+      if (await probe(channel.url, timeoutMs)) usable.push(channel);
     } catch {
       // Ignore dead or blocked sources from the playlist.
     }
   }
-  return usable;
+  if (usable.length) return usable;
+  return channels.slice(0, Math.min(channels.length, 6));
 }
 
 function isPublicIpv4(address) {
