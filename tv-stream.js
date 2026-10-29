@@ -24,8 +24,6 @@ const SECURITY_HEADERS = {
 const MAX_PLAYLIST_BYTES = 1_048_576;
 const STREAM_TOKEN_TTL_MS = 2 * 60_000;
 const TRANSCODE_SESSION_TTL_MS = 15 * 60_000;
-const MAX_PROBE_CHANNELS = 30;
-const PROBE_TIMEOUT_MS = 1200;
 const streamTokens = new Map();
 const internalStreamTokens = new Map();
 const activeTranscodes = new Set();
@@ -33,40 +31,8 @@ const transcodeSessions = new Map();
 const MAX_ACTIVE_TRANSCODES = 2;
 let cachedPlaylist;
 
-async function probeStreamUrl(url, timeoutMs = PROBE_TIMEOUT_MS) {
-  const upstream = new URL(url);
-  return await new Promise((resolve) => {
-    const transport = upstream.protocol === 'https:' ? https : http;
-    const request = transport.request(upstream, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'BerFoot-Channel-Probe/1.0',
-        'Range': 'bytes=0-0',
-        Accept: '*/*',
-      },
-      timeout: timeoutMs,
-    }, (response) => {
-      response.resume();
-      resolve(response.statusCode >= 200 && response.statusCode < 400);
-    });
-    request.once('timeout', () => request.destroy(new Error('timeout')));
-    request.once('error', () => resolve(false));
-    request.end();
-  });
-}
-
-export async function filterUsableChannels(channels, probe = probeStreamUrl, { maxChecks = MAX_PROBE_CHANNELS, timeoutMs = PROBE_TIMEOUT_MS } = {}) {
-  const candidates = channels.slice(0, maxChecks);
-  const usable = [];
-  for (const channel of candidates) {
-    try {
-      if (await probe(channel.url, timeoutMs)) usable.push(channel);
-    } catch {
-      // Ignore dead or blocked sources from the playlist.
-    }
-  }
-  if (usable.length) return usable;
-  return channels.slice(0, Math.min(channels.length, MAX_PROBE_CHANNELS));
+export function retainAllChannels(channels) {
+  return channels;
 }
 
 function isPublicIpv4(address) {
@@ -147,10 +113,9 @@ async function getPlaylistData() {
       }
     }
   }
-  const filteredChannels = await filterUsableChannels(channels);
-  if (!filteredChannels.length) throw new BizError('Aucun flux HTTP(S) valide dans la playlist', 422);
-  const filteredOrigins = new Set(filteredChannels.map((channel) => new URL(channel.url).origin));
-  cachedPlaylist = { mtimeMs: stat.mtimeMs, channels: filteredChannels, origins: filteredOrigins };
+  const allChannels = retainAllChannels(channels);
+  if (!allChannels.length) throw new BizError('Aucun flux HTTP(S) valide dans la playlist', 422);
+  cachedPlaylist = { mtimeMs: stat.mtimeMs, channels: allChannels, origins };
   return cachedPlaylist;
 }
 
@@ -412,7 +377,7 @@ async function startTranscode(req, db, server, channelId) {
       '-b:a:0', '48k', '-ac:a:0', '1',
       '-b:a:1', '96k', '-ac:a:1', '2', '-ar', '44100',
       '-force_key_frames', 'expr:gte(t,n_forced*1)',
-      '-f', 'hls', '-hls_time', '2', '-hls_list_size', '8',
+      '-f', 'hls', '-hls_time', '2', '-hls_list_size', '32',
       '-hls_flags', 'delete_segments+append_list+omit_endlist+independent_segments',
       '-var_stream_map', 'v:0,a:0 v:1,a:1',
       '-master_pl_name', 'playlist.m3u8',
