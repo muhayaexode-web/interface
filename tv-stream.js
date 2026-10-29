@@ -31,6 +31,40 @@ const transcodeSessions = new Map();
 const MAX_ACTIVE_TRANSCODES = 2;
 let cachedPlaylist;
 
+async function probeStreamUrl(url, timeoutMs = 5000) {
+  const upstream = new URL(url);
+  return await new Promise((resolve) => {
+    const transport = upstream.protocol === 'https:' ? https : http;
+    const request = transport.request(upstream, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'BerFoot-Channel-Probe/1.0',
+        'Range': 'bytes=0-0',
+        Accept: '*/*',
+      },
+      timeout: timeoutMs,
+    }, (response) => {
+      response.resume();
+      resolve(response.statusCode >= 200 && response.statusCode < 400);
+    });
+    request.once('timeout', () => request.destroy(new Error('timeout')));
+    request.once('error', () => resolve(false));
+    request.end();
+  });
+}
+
+export async function filterUsableChannels(channels, probe = probeStreamUrl) {
+  const usable = [];
+  for (const channel of channels) {
+    try {
+      if (await probe(channel.url)) usable.push(channel);
+    } catch {
+      // Ignore dead or blocked sources from the playlist.
+    }
+  }
+  return usable;
+}
+
 function isPublicIpv4(address) {
   const octets = address.split('.').map(Number);
   if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
@@ -109,8 +143,10 @@ async function getPlaylistData() {
       }
     }
   }
-  if (!channels.length) throw new BizError('Aucun flux HTTP(S) valide dans la playlist', 422);
-  cachedPlaylist = { mtimeMs: stat.mtimeMs, channels, origins };
+  const filteredChannels = await filterUsableChannels(channels);
+  if (!filteredChannels.length) throw new BizError('Aucun flux HTTP(S) valide dans la playlist', 422);
+  const filteredOrigins = new Set(filteredChannels.map((channel) => new URL(channel.url).origin));
+  cachedPlaylist = { mtimeMs: stat.mtimeMs, channels: filteredChannels, origins: filteredOrigins };
   return cachedPlaylist;
 }
 
