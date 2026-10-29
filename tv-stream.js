@@ -24,7 +24,7 @@ const SECURITY_HEADERS = {
 const MAX_PLAYLIST_BYTES = 1_048_576;
 const STREAM_TOKEN_TTL_MS = 2 * 60_000;
 const TRANSCODE_SESSION_TTL_MS = 15 * 60_000;
-const MAX_PROBE_CHANNELS = 12;
+const MAX_PROBE_CHANNELS = 30;
 const PROBE_TIMEOUT_MS = 1200;
 const streamTokens = new Map();
 const internalStreamTokens = new Map();
@@ -66,7 +66,7 @@ export async function filterUsableChannels(channels, probe = probeStreamUrl, { m
     }
   }
   if (usable.length) return usable;
-  return channels.slice(0, Math.min(channels.length, 6));
+  return channels.slice(0, Math.min(channels.length, MAX_PROBE_CHANNELS));
 }
 
 function isPublicIpv4(address) {
