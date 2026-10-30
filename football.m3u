@@ -1,6 +1,8 @@
 #EXTM3U
 #EXTINF:-1 tvg-id="20MinutesTV.fr@SD",20 Minutes TV (1080p)
 https://live-20minutestv.digiteka.com/1961167769/index.m3u8
+#EXTINF:-1 tvg-id="franceinfo@SD",franceinfo
+http://149.62.177.107:9999/franceinfo:/index.m3u8
 #EXTINF:-1 tvg-id="AfricanewsEnglish.fr@SD",Africanews English (720p)
 https://cdn-euronews.akamaized.net/live/eds/africanews-en/25049/index.m3u8
 #EXTINF:-1 tvg-id="AfricanewsFrench.fr@SD",Africanews French (720p)
@@ -286,6 +288,7 @@ http://149.62.177.107:9999/TMC/index.m3u8
 #EXTINF:-1 tvg-id="6ter.fr@SD",6ter
 http://149.62.177.107:9999/6ter/index.m3u8
 #EXTINF:-1 tvg-id="LCI.fr@SD",LCI
+http://149.62.177.107:9999/LCI/index.m3u8
 #EXTINF:-1 tvg-id="Ben Sport. US@SD",BENSPORT-XTRA 
 https://bein-xtra-bein.amagi.tv/playlist.m3u8
 #EXTINF:-1 tvg-id="DAZN_3t. US@SD",DAZN_3 
