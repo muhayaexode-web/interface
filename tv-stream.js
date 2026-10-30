@@ -24,6 +24,7 @@ const SECURITY_HEADERS = {
 const MAX_PLAYLIST_BYTES = 1_048_576;
 const STREAM_TOKEN_TTL_MS = 2 * 60_000;
 const TRANSCODE_SESSION_TTL_MS = 15 * 60_000;
+const STREAM_USER_AGENT = 'VLC/3.0.16';
 const streamTokens = new Map();
 const internalStreamTokens = new Map();
 const activeTranscodes = new Set();
@@ -50,6 +51,48 @@ function isPublicIpv4(address) {
     const base = (((net[0] << 24) | (net[1] << 16) | (net[2] << 8) | net[3]) >>> 0);
     const mask = (0xffffffff << (32 - bits)) >>> 0;
     return (value & mask) === (base & mask);
+  });
+}
+
+function probeVideoCodec(inputUrl, internalToken) {
+  return new Promise((resolve, reject) => {
+    let stderr = '';
+    let finished = false;
+    let timeout;
+    const child = spawn(ffmpegPath, [
+      '-hide_banner', '-nostdin', '-loglevel', 'info',
+      '-protocol_whitelist', 'http,https,tcp,tls,crypto',
+      '-rw_timeout', '15000000',
+      '-user_agent', STREAM_USER_AGENT,
+      '-headers', `X-BerFoot-Internal: ${internalToken}\r\n`,
+      '-i', inputUrl,
+    ], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    const finish = (error, codec) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve(codec);
+    };
+    const checkCodec = () => {
+      const codec = stderr.match(/\bVideo:\s*([a-z0-9_]+)/i)?.[1]?.toLowerCase();
+      if (!codec) return false;
+      finish(null, codec);
+      child.kill();
+      return true;
+    };
+    child.stderr.on('data', (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-8000);
+      checkCodec();
+    });
+    child.once('error', (error) => finish(error));
+    child.once('close', () => {
+      if (!checkCodec()) finish(new BizError('Impossible de détecter le codec vidéo de la source', 502));
+    });
+    timeout = setTimeout(() => {
+      child.kill();
+      finish(new BizError('Délai dépassé pendant la détection du codec vidéo', 504));
+    }, 15_000);
   });
 }
 
@@ -216,7 +259,7 @@ async function relayStream(req, res, db, token) {
     source = {
       url: channel.url,
       allowedOrigins: new Set(playlist.origins),
-      userAgent: channel.userAgent,
+      userAgent: channel.userAgent || STREAM_USER_AGENT,
     };
   } else {
     source = streamTokens.get(token);
@@ -355,17 +398,23 @@ async function startTranscode(req, db, server, channelId) {
   const inputUrl = `http://127.0.0.1:${address.port}/api/stream/channel/${channelId}`;
   let child;
   try {
+    const videoCodec = await probeVideoCodec(inputUrl, internalToken);
+    const videoCodecArgs = videoCodec === 'h264'
+      ? ['-c:v', 'copy']
+      : ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '48'];
     child = spawn(ffmpegPath, [
       '-hide_banner', '-loglevel', 'error', '-nostdin',
       '-protocol_whitelist', 'http,https,tcp,tls,crypto',
       '-fflags', '+nobuffer',
       '-analyzeduration', '2000000', '-probesize', '5000000',
       '-rw_timeout', '20000000',
+      '-user_agent', STREAM_USER_AGENT,
       '-headers', `X-BerFoot-Internal: ${internalToken}\r\n`,
       '-i', inputUrl,
       '-map', '0:v:0', '-map', '0:a:0?',
-      '-c', 'copy',
-      '-f', 'hls', '-hls_time', '2', '-hls_list_size', '32',
+      ...videoCodecArgs,
+      '-c:a', 'aac', '-b:a', '128k',
+      '-f', 'hls', '-hls_time', '2', '-hls_list_size', '4',
       '-hls_flags', 'delete_segments+append_list+omit_endlist+independent_segments',
       '-hls_segment_filename', path.join(directory, 'stream_0_%06d.ts'),
       path.join(directory, 'stream_0.m3u8'),
