@@ -5,20 +5,23 @@ https://live.france24.com/hls/live/2037179-b/F24_FR_HI_HLS/master_5000.m3u8
 https://live-20minutestv.digiteka.com/1961167769/index.m3u8
 #EXTINF:-1 tvg-id="TV5MondeAfrica.fr@SD",TV5Monde Africa (720p)
 http://5.9.121.178/tv5monde/index.m3u8
-#EXTM3U
-#EXTINF:0,Hollywood HD orig
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9017/index.m3u8
-#EXTINF:0,FX HD orig
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9018/index.m3u8
-#EXTINF:0,Amedia 1 HD orig
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9069/index.m3u8
+#EXTINF:0,Eurosport 2 HD
+http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/234/index.m3u8
+#EXTINF:0,Tring Sport 1 HD AL
+http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31563/index.m3u8
+#EXTINF:0,Fint Ga 2 sport
+http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20092/index.m3u8
+#EXTINF:0,DAZN 1 FHD PT
+http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19158/index.m3u8
+#EXTINF:0,MMA-TV.com HD
+#EXTINF:0,ESPN 2 HD US
+http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19155/index.m3u8
+http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19243/index.m3u8
+#EXTINF:0,ESPN 4 HD NL
+http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19204/index.m3u8
 #EXTINF:0,ViP Sport 5
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20106/index.m3u8
-#EXTINF:0,Viju TV1000 Action HD orig
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9057/index.m3u8
 #EXTINF:0,Amedia Premium HD orig
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9022/index.m3u8
-#EXTINF:0,Viju TV1000 HD orig
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9058/index.m3u8
 #EXTINF:0,Trash HD
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/6396/index.m3u8
@@ -26,8 +29,6 @@ http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/6396/index.m3u8
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20108/index.m3u8
 #EXTINF:0,Pimple TV 4
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20097/index.m3u8
-#EXTINF:0,.red HD orig
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9035/index.m3u8
 #EXTINF:0,Viju TV1000 HD
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/6387/index.m3u8
 #EXTINF:0,Amedia Hit HD orig
@@ -42,8 +43,6 @@ http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20096/index.m3u8
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20095/index.m3u8
 #EXTINF:0,ViP Sport 2
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20103/index.m3u8
-#EXTINF:0,Tring Sport 1 HD AL
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31563/index.m3u8
 #EXTINF:0,UPL TV HD UA
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31446/index.m3u8
 #EXTINF:0,Tring Sport 3 HD AL
@@ -52,8 +51,6 @@ http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31565/index.m3u8
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20098/index.m3u8
 #EXTINF:0,ViP Sport 1
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20099/index.m3u8
-#EXTINF:0,Eurosport 2 HD
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/234/index.m3u8
 #EXTINF:0,Sport 1 HD HU
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31568/index.m3u8
 #EXTINF:0,ViP Sport 3
@@ -80,8 +77,6 @@ http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31445/index.m3u8
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20094/index.m3u8
 #EXTINF:0,ViP Sport 8
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20109/index.m3u8
-#EXTINF:0,ESPN 2 HD US
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19155/index.m3u8
 #EXTINF:0,BollywooD HD orig
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/9225/index.m3u8
 #EXTINF:0,Amedia 1 orig
@@ -136,24 +131,16 @@ http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/10002/index.m3u8
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/141/index.m3u8
 #EXTINF:0,VF Fantasy
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/10005/index.m3u8
-#EXTINF:0,Fint Ga 2
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/20092/index.m3u8
 #EXTINF:0,Fox Sports HD MX
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19139/index.m3u8
 #EXTINF:0,KinoJam 2 HD
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/7261/index.m3u8
-#EXTINF:0,DAZN 1 FHD PT
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19158/index.m3u8
 #EXTINF:0,KinoJam 1 HD
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/7260/index.m3u8
 #EXTINF:0,Start World
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19248/index.m3u8
-#EXTINF:0,MMA-TV.com HD
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19243/index.m3u8
 #EXTINF:0,Benfica TV FHD PT
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19160/index.m3u8
-#EXTINF:0,ESPN 4 HD NL
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/19204/index.m3u8
 #EXTINF:0,Super Tennis FHD IT
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/6079/index.m3u8
 #EXTINF:0,Hollywood orig
@@ -182,8 +169,6 @@ http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/10060/index.m3u8
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31573/index.m3u8
 #EXTINF:0,Trace Sport Stars HD
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/14030/index.m3u8
-#EXTINF:0,Setanta Qazaqstan HD
-http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/2399/index.m3u8
 #EXTINF:0,Arena Sport 8 HD RS
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31609/index.m3u8
 #EXTINF:0,Capital News PK
