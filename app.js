@@ -442,6 +442,26 @@ export function createApp(db, payments, { syncFn = syncDate } = {}) {
     await requireAdmin(req);
     return { data: { refunded: await voidMatch(db, Number(params.id)) } };
   });
+  route('POST', '/api/admin/announcements', async (req, res, { body }) => {
+    await requireAdmin(req);
+    const title = String(body.title ?? '').trim().slice(0, 80);
+    const text = String(body.body ?? '').trim().slice(0, 300);
+    if (!title || !text) throw new BizError('Titre et message requis');
+    const row = await db.get('INSERT INTO announcements (title, body) VALUES (?, ?) RETURNING id', title, text);
+    return { status: 201, data: { id: row.id } };
+  });
+  route('POST', '/api/admin/announcements/:id/delete', async (req, res, { params }) => {
+    await requireAdmin(req);
+    const id = Number(params.id);
+    if (!Number.isSafeInteger(id) || id < 1) throw new BizError('Annonce invalide');
+    await db.run('DELETE FROM announcements WHERE id = ?', id);
+    return { data: { deleted: true } };
+  });
+  route('GET', '/api/announcements', async (req) => {
+    await requireUser(req);
+    const items = await db.all('SELECT id, title, body, created_at FROM announcements ORDER BY id DESC LIMIT 5');
+    return { data: { items } };
+  });
   route('POST', '/api/admin/sync', async (req) => {
     await requireAdmin(req);
     const count = await syncFn(db, dateOffset(0));
