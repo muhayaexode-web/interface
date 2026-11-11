@@ -3,15 +3,91 @@
 https://live.france24.com/hls/live/2037179-b/F24_FR_HI_HLS/master_5000.m3u8
 #EXTINF:-1 tvg-id="20MinutesTV.fr@SD",20 Minutes TV (1080p)
 https://live-20minutestv.digiteka.com/1961167769/index.m3u8
-#EXTINF:-1 tvg-id="BENSPORT1.fr@SD",BEIN SPORT 1
-https://bplive2.akbarnews.store/live1/720p.m3u8
-#EXTINF:-1 tvg-id="BENSPORT1.fr@SD",BEIN SPORT 1F
-https://2cdn.syria-player.info/proxy.php?stream=live/bein1.m3u8
-https://bplive2.akbarnews.store/live1/720p.m3u8
+#EXTINF:-1 tvg-id="13erue.fr@SD",13eRUE
+http://192.99.186.30/stream/251/index.m3u8
+#EXTINF:-1 tvg-id="ADN.fr@SD",ADN
+https://d3b73b34o7cvkq.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-gz2sgqzp076kf/adn.m3u8
+#EXTINF:-1 tvg-id="BFM2.fr@SD",BFM2
+https://d1ib1gsg71oarf.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-scp7wda722jph/BFM2_FR.m3u8
+#EXTINF:-1 tvg-id="brionnaistv.fr@SD",brionnaistv
+https://stream2.mandarine.media/brionnaistv/brionnaistv/playlist.m3u8
+#EXTINF:-1 tvg-id="+sport.fr@SD",+sport
+http://tv.streambox.fr/live/testlivestream/testlivestream/31.m3u8
+#EXTINF:-1 tvg-id="Cannes.fr@SD",Les Cannes
+https://vdo2.pro-fhi.net:3628/live/uppodsfqlive.m3u8
+#EXTINF:-1 tvg-id="Services_TV.fr@SD",Services TV
+https://jmp2.uk/plu-5f8ed1ff5c39700007e2204a.m3u8
+#EXTINF:-1 tvg-id="cinenanar.fr@SD",cinenanar
+https://zylo-cinenanar-rakuten.amagi.tv/playlist.m3u8
+#EXTINF:-1 tvg-id="cinewestern.fr@SD",cinewestern
+https://amg00711-zylo-amg00711c8-rakuten-uk-2686.playouts.now.amagi.tv/playlist/amg00711-zylofast-cinewestern-rakutenuk/playlist.m3u8
+#EXTINF:-1 tvg-id="PlusTv.fr@SD",Plus Tv 2
+https://jmp2.uk/plu-62f3e8ad2a8e8000077b013d.m3u8
+#EXTINF:-1 tvg-id="Europe_1_tv.fr@SD",Europe 1 Tv
+https://raw.githubusercontent.com/Paradise-91/ParaTV/main/streams/misc/europe-1-tv-dm.m3u8
+#EXTINF:-1 tvg-id="EVARDIS_TV.fr@SD",EVARDIS TV
+https://evandis.streamakaci.tv/str_evandis_evandis/str_evandis_multi/playlist.m3u8
+#EXTINF:-1 tvg-id="fashion_tv.fr@SD",FASHION TV
+https://edge-fast3.evrideo.tv/bfdbb576-83f7-11f0-9f89-0200170e3e04_1000028043_HLS/manifest.m3u8
+#EXTINF:-1 tvg-id="master_tv.fr@SD",Master Tv
+https://37b4c228.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWZyX0ZJRkFQbHVzRnJlbmNoX0hMUw/playlist.m3u8
+#EXTINF:-1 tvg-id="meteo_tv.fr@SD",Meteo dela carte
+http://85.14.32.26:8800/udp/239.100.10.144:5000
+#EXTINF:-1 tvg-id="novelas_frequence.fr@SD",NOVELAS FRQUENCE
+https://d20oth1416y9a1.cloudfront.net/playlist/amg00711-zylofast-frequencenovelas-rakutenus/playlist.m3u8
+#EXTINF:-1 tvg-id="Genaration_tv.fr@SD",Generation Tv
+https://event.vedge.infomaniak.com/livecast/ik:generation-tv/manifest.m3u8
+#EXTINF:-1 tvg-id="golf_plus.fr@SD",Golf+
+https://event.vedge.infomaniak.com/livecast/ik:generation-tv/manifest.m3u8
+#EXTINF:-1 tvg-id="Gong_tv.fr@SD",Gong Tv
+https://amg01596-gongnetworks-gong-ono-vh5f2.amagi.tv/1080p-vtt/index.m3u8
+#EXTINF:-1 tvg-id="guli_up.fr@SD",Guli Up
+http://99.27.51.147:8080/Gulli/index.m3u8
+#EXTINF:-1 tvg-id="ILTV.fr@SD",ILTV
+http://192.99.186.30/stream/250/index.m3u8
+#EXTINF:-1 tvg-id="into_crime.fr@SD",Into CRIME
+https://06cb85ad6ccb4a6b97f561e62d16ad3f.mediatailor.us-west-2.amazonaws.com/v1/master/ba62fe743df0fe93366eba3a257d792884136c7f/LINEAR-822-FR-SONYONETHEBLACKLIST-LG_FR/playlist.m3u8
 #EXTINF:-1 tvg-id="TV5MondeAfrica.fr@SD",TV5Monde Africa (720p)
 http://5.9.121.178/tv5monde/index.m3u8
+#EXTINF:-1 tvg-id="ktv.fr@SD",Ktv
+https://tebeo.streamakaci.tv/tebeo/tebeo-multi/playlist.m3u8
+#EXTINF:-1 tvg-id="lequipe.fr@SD",L'EQUIPE
+https://ott.tv5monde.com/Content/HLS/Live/channel(tivi5)/variant.m3u8
 #EXTINF:0,Eurosport 2 HD
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/234/index.m3u8
+#EXTINF:-1 tvg-id="TRACE_AFRICA.fr@SD",TRACE AFRICA
+https://channels.trace.plus/Traceprod/AFRICA_FR_hd/index.m3u8
+#EXTINF:-1 tvg-id="TRACE_TERANGA.fr@SD",TRACE TERANGA
+https://channels.trace.plus/Traceprod/TERANGA_hd/index.m3u8
+#EXTINF:-1 tvg-id="TRACE_AYITI.fr@SD",TRACE AYITI
+https://channels.trace.plus/Traceprod/AYITI_hd/index.m3u8
+#EXTINF:-1 tvg-id="TRACE_BRASIL.fr@SD",TRACE BRAZILE
+https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg01131-tracetv-tracebrazuca-samsungbr/playlist.m3u8
+#EXTINF:-1 tvg-id="TRACE_CARIBBEAN.fr@SD",TRACE CARIBBEAN
+https://channels.trace.plus/Traceprod/CARIBBEAN_hd/index.m3u8
+#EXTINF:-1 tvg-id="TRACE_GOSPEL.fr@SD",TRACE GOSEPEL
+https://channels.trace.plus/Traceprod/GOSPEL_FR_hd/index.m3u8
+#EXTINF:-1 tvg-id="TRACE_GOSPEL.fr@SD",TRACE KITOKO
+https://channels.trace.plus/Traceprod/KITOKO_hd/index.m3u8
+#EXTM3U
+#EXTINF:-1 tvg-name="Trace Latina" group-title="Musique",Trace Latina HD
+https://channels.trace.plus/Traceprod/LATINA_hd/index.m3u8
+#EXTINF:-1 tvg-name="Trace Mboa" group-title="Musique",Trace Mboa HD
+https://channels.trace.plus/Traceprod/MBOA_hd/index.m3u8
+#EXTINF:-1 tvg-name="Trace Muzika" group-title="Musique",Trace Muzika HD
+https://channels.trace.plus/Traceprod/MUZIKA_hd/index.m3u8
+#EXTINF:-1 tvg-name="Trace Mziki" group-title="Musique",Trace Mziki HD
+https://channels.trace.plus/Traceprod/MZIKI_hd/index.m3u8
+#EXTINF:-1 tvg-name="Trace Naija" group-title="Musique",Trace Naija HD
+https://channels.trace.plus/Traceprod/NAIJA_hd/index.m3u8
+#EXTINF:-1 tvg-name="Trace Sport Stars" group-title="Sport",Trace Sport Stars
+https://lightning-tracesport-samsungau.amagi.tv/playlist.m3u8
+#EXTINF:-1 tvg-name="Trace Urban" group-title="Musique",Trace Urban
+https://lightning-traceurban-samsungau.amagi.tv/playlist.m3u8
+#EXTINF:-1 tvg-name="Trace Urban FR" group-title="Musique",Trace Urban FR HD
+https://channels.trace.plus/Traceprod/URBAN_FR_hd/index.m3u8
+#EXTINF:0,TV3V 1 HD TV3V
+https://tv3v.live-kd.com/live/tv3v/livestream/index.m3u8
 #EXTINF:0,Tring Sport 1 HD AL
 http://ftcxowga.zyntras.top/iptv/XM896GLGDHY76Q/31563/index.m3u8
 #EXTINF:0,Fint Ga 2 sport
