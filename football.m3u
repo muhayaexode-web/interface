@@ -2,7 +2,7 @@
 #EXTINF:-1 tvg-id="France24.fr@French" tvg-logo="https://i.imgur.com/u8N6uoj.png" group-title="News",France 24 (1080p)
 https://live.france24.com/hls/live/2037179-b/F24_FR_HI_HLS/master_5000.m3u8
 #EXTINF:-1 tvg-id="EMCITV.fr@French" tvg-logo="https://i.imgur.com/u8N6uoj.png" group-title="Religion",EMCITV
-https://live.eu-north-1b.cf.dmcdn.net/sec2(VDxVqfNzPWJqQgo02-3WU_On1bH8ToQxFXw6n4ZyzpMyBZMyUah0eeMqur67dIYUoVHxUDm33n9dSJudpatxN6p8R5t486GaXfCMMqIXUwWSa34dQyGez7Jxm-U51XOs)/dm/3/x8azdkm/s/live-380.m3u8
+https://live.eu-north-1b.cf.dmcdn.net/sec2(jB4NvIGuAvm7cujepip3OQ76QM6-VRT75VLXJwzbP-hXNRnoG8PSghoeLlBO5vupqqRfwD2KDEKvZcPsE47yGu5GJNqLsxkVboD6ZtKRSPTn8nWXGVxVwGSfvu-BqQ9w)/dm/3/x8azdkm/s/live-480@60.m3u8
 #EXTINF:-1 tvg-id="20MinutesTV.fr@SD",20 Minutes TV (1080p)
 https://live-20minutestv.digiteka.com/1961167769/index.m3u8
 #EXTINF:-1 tvg-id="13erue.fr@SD",13eRUE
