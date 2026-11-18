@@ -9,6 +9,8 @@ https://alive-lci-das.cdn-0.diff.tf1.fr/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ
 https://live.eu-north-1b.cf.dmcdn.net/sec2(vKDsEBxTqNYxRda439kazLnAMWMihbT9S4G3jAu1rbHaBf26gMK7Zg1ljxT06tCZgmEBSZzwEHcEt_eWPvxIU8CIF7K6lqs5u9M8v2Dk4QRrB6YycVDj-XS-E60eRGZvFnsL4cGHfAsdTFWGF1jwsNun9559A0wAFBiQj5Ya3hy-SDVKVVLGsUJr8iH6nFDT)/dm/3/x5idxxp/s/live-h264-240.m3u8
 #EXTINF:-1 tvg-id="20minutes.fr@SD",20 minutes TV
 https://live-20minutestv.digiteka.com/1961167769/index.m3u8
+#EXTINF:-1 tvg-id="red_bull.fr@SD",World of Red Bull TV
+https://freqsyndlin.redbull.com/1723/rbtv/hls/master/playlist_1024x576.m3u8
 #EXTINF:-1 tvg-id="z_one.fr@SD",Zee ONE
 https://7689426c.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/U2Ftc3VuZy1mcl9aZWVNYWdpY19ITFM/playlist.m3u8
 #EXTINF:-1 tvg-id="dieutv.fr@SD",DIEUTV
