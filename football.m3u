@@ -1,6 +1,8 @@
 #EXTM3U
 #EXTINF:-1 tvg-id="France24.fr@French" tvg-logo="https://i.imgur.com/u8N6uoj.png" group-title="News",France 24 (1080p)
 https://live.france24.com/hls/live/2037179-b/F24_FR_HI_HLS/master_5000.m3u8
+#EXTINF:-1 tvg-id="NEW_WORD.fr@SD",NEW WORLD INFO
+https://hls.newworldtv.com/nw-info/video/live_3.m3u8
 #EXTINF:-1 tvg-id="EMCITV.fr@French" tvg-logo="https://i.imgur.com/u8N6uoj.png" group-title="Religion",EMCITV
 https://live.eu-north-1b.cf.dmcdn.net/sec2(AHAERwNjx2UvZN703ajRD1wBt9flbSzqjdMcu7LAET9CSyTEzx98CgePO1_e9KBaXhEgluq1m5W_BEePsbStyiyzNdV0YOmPngwJy6erbBoeEfaVnUZDkGUHPgH1YnA3)/dm/3/x8azdkm/s/live-720@60.m3u8
 #EXTINF:-1 tvg-id="lci.fr@SD",LCI
