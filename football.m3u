@@ -2,7 +2,7 @@
 #EXTINF:-1 tvg-id="France24.fr@French" tvg-logo="https://i.imgur.com/u8N6uoj.png" group-title="News",France 24 (1080p)
 https://live.france24.com/hls/live/2037179-b/F24_FR_HI_HLS/master_5000.m3u8
 #EXTINF:-1 tvg-id="NEW_WORD.fr@SD",NEW WORLD INFO
-https://hls.newworldtv.com/nw-info/video/live_3.m3u8
+https://hls.newworldtv.com/nw-info-2/video/live.m3u8
 #EXTINF:-1 tvg-id="NEW_WORD_2.fr@SD",NEW WORLD INFO 2
 https://hls.newworldtv.com/nw-info-2/video/live.m3u8
 #EXTINF:-1 tvg-id="NEW_WORD_MAGAZINE.fr@SD",NEW WORLD MAGAZINE
