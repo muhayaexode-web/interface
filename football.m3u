@@ -1,6 +1,20 @@
 #EXTM3U
 #EXTINF:-1 tvg-id="France24.fr@French" tvg-logo="https://i.imgur.com/u8N6uoj.png" group-title="News",France 24 (1080p)
 https://live.france24.com/hls/live/2037179-b/F24_FR_HI_HLS/master_5000.m3u8
+#EXTINF:-1 tvg-id="canalplus.fr@SD",CANAL PLUS SK
+http://rpprod.hbbtv.cdn.cra.cz:8080/hbbTV/cme-sk-canal-plus-sport/live_fullhd?offsetSeconds=0
+#EXTINF:-1 tvg-id="canalsportplus.fr@SD",CANAL SPORT PLUS SK
+http://tv.streambox.fr/live/testlivestream/testlivestream/31.m3u8
+#EXTINF:-1 tvg-id="canalaffiche.fr@SD",CANAL AFFICHE SPORT
+#EXTINF:-1 tvg-id="5GOLDsport.fr@SD",5GOLD SPORT 1
+https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_gold/live.livx/playlist.m3u8
+#EXTINF:-1 tvg-id="5LIVESPORT.fr@SD",5LIVE SPORT
+https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_live/live.livx/playlist.m3u8
+#EXTINF:-1 tvg-id="5SPORTPLUS.fr@SD",5SPORT PLUS
+https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_plus/live.livx/playlist.m3u8
+#EXTINF:-1 tvg-id="5SPORTPLUS2.fr@SD",5SPORT PLUS 2
+https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5/live.livx/playlist.m3u8
+http://rpprod.hbbtv.cdn.cra.cz:8080/hbbTV/cme-sk-canal-plus-sport4/live_fullhd?offsetSeconds=0
 #EXTINF:-1 tvg-id="cnews.fr@SD",CNEWS
 https://live.eu-north-1b.cf.dmcdn.net/sec2(vKDsEBxTqNYxRda439kazLnAMWMihbT9S4G3jAu1rbHaBf26gMK7Zg1ljxT06tCZgmEBSZzwEHcEt_eWPvxIU8CIF7K6lqs5u9M8v2Dk4QRrB6YycVDj-XS-E60eRGZvFnsL4cGHfAsdTFWGF1jwsNun9559A0wAFBiQj5Ya3hy-SDVKVVLGsUJr8iH6nFDT)/dm/3/x5idxxp/s/live-h264-240.m3u8
 #EXTINF:-1 tvg-id="20minutes.fr@SD",20 minutes TV
