@@ -6,6 +6,7 @@ import { makeSaspay } from './saspay-wallet.js';
 import { createPaymentService } from './payment-service.js';
 import { startSyncLoop } from './sportapi.js';
 import { startTvSubscriptionLoop } from './tv.js';
+import { startLudoMaintenance } from './ludo.js';
 
 if (config.apiCheckPaiement === 'pawapay' && !config.pawapayToken) {
   console.warn('Attention : PAWAPAY_API_TOKEN manquante dans la configuration Render');
@@ -25,7 +26,10 @@ const payments = createPaymentService(db, {
 startSyncLoop(db);
 payments.startPaymentsLoop();
 startTvSubscriptionLoop(db);
+const stopLudoMaintenance = startLudoMaintenance(db);
 
-createApp(db, payments).listen(config.port, () => {
+const app = createApp(db, payments);
+app.once('close', stopLudoMaintenance);
+app.listen(config.port, () => {
   console.log(`BerFoot prêt sur http://localhost:${config.port} (paiements: ${payments.provider})`);
 });
