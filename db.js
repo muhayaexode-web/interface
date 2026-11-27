@@ -91,6 +91,7 @@ const SCHEMA_SQL = `
       CHECK (status IN ('open','active','settled','refunded')),
     turn_player_id BIGINT REFERENCES users(id),
     last_roll INTEGER CHECK (last_roll BETWEEN 1 AND 6),
+    last_roll_display INTEGER CHECK (last_roll_display BETWEEN 1 AND 6),
     winner_id BIGINT REFERENCES users(id),
     payout BIGINT NOT NULL DEFAULT 0,
     commission BIGINT NOT NULL DEFAULT 0,
@@ -98,6 +99,8 @@ const SCHEMA_SQL = `
     updated_at TEXT NOT NULL DEFAULT ${NOW},
     settled_at TEXT
   );
+  ALTER TABLE ludo_games
+    ADD COLUMN IF NOT EXISTS last_roll_display INTEGER CHECK (last_roll_display BETWEEN 1 AND 6);
   CREATE INDEX IF NOT EXISTS idx_ludo_games_open ON ludo_games(status, created_at);
   CREATE INDEX IF NOT EXISTS idx_ludo_games_players ON ludo_games(host_id, opponent_id, status);
 
