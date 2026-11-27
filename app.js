@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { AGO, BizError } from './db.js';
 import { clearCookie, login, makeToken, register, sessionCookie, throttle, userFromRequest } from './auth.js';
 import { acceptOffer, cancelOffer, commissionOn, createOffer, opposite, voidMatch } from './bets.js';
+import { createLudoService } from './ludo.js';
 import {
   DEPOSIT_FEE_BASIS_POINTS,
   DEPOSIT_NET_BONUS,
@@ -65,7 +66,7 @@ async function readJson(req) {
   }
 }
 
-export function createApp(db, payments, { syncFn = syncDate } = {}) {
+export function createApp(db, payments, { syncFn = syncDate, ludo = createLudoService() } = {}) {
   const responseSecurityHeaders = SECURITY_HEADERS;
 
   const requireUser = async (req) => {
@@ -312,6 +313,52 @@ export function createApp(db, payments, { syncFn = syncDate } = {}) {
       };
     });
     return { data: { bets, page, pages, total } };
+  });
+
+  route('GET', '/api/ludo', async (req) => {
+    const user = await requireUser(req);
+    return { data: await ludo.list(db, user.id) };
+  });
+  route('POST', '/api/ludo/games', async (req, res, { body }) => {
+    const user = await requireUser(req);
+    const game = await ludo.create(db, user.id, Number(body.stake));
+    return { status: 201, data: { game } };
+  });
+  route('GET', '/api/ludo/games/:id', async (req, res, { params }) => {
+    const user = await requireUser(req);
+    const gameId = Number(params.id);
+    if (!Number.isSafeInteger(gameId) || gameId < 1) throw new BizError('Partie invalide');
+    return { data: { game: await ludo.get(db, user.id, gameId) } };
+  });
+  route('POST', '/api/ludo/games/:id/join', async (req, res, { params }) => {
+    const user = await requireUser(req);
+    const gameId = Number(params.id);
+    if (!Number.isSafeInteger(gameId) || gameId < 1) throw new BizError('Partie invalide');
+    return { data: { game: await ludo.join(db, user.id, gameId) } };
+  });
+  route('POST', '/api/ludo/games/:id/roll', async (req, res, { params }) => {
+    const user = await requireUser(req);
+    const gameId = Number(params.id);
+    if (!Number.isSafeInteger(gameId) || gameId < 1) throw new BizError('Partie invalide');
+    return { data: { game: await ludo.roll(db, user.id, gameId) } };
+  });
+  route('POST', '/api/ludo/games/:id/move', async (req, res, { params, body }) => {
+    const user = await requireUser(req);
+    const gameId = Number(params.id);
+    if (!Number.isSafeInteger(gameId) || gameId < 1) throw new BizError('Partie invalide');
+    return { data: { game: await ludo.move(db, user.id, gameId, Number(body.pieceIndex)) } };
+  });
+  route('POST', '/api/ludo/games/:id/cancel', async (req, res, { params }) => {
+    const user = await requireUser(req);
+    const gameId = Number(params.id);
+    if (!Number.isSafeInteger(gameId) || gameId < 1) throw new BizError('Partie invalide');
+    return { data: { game: await ludo.cancel(db, user.id, gameId) } };
+  });
+  route('POST', '/api/ludo/games/:id/resign', async (req, res, { params }) => {
+    const user = await requireUser(req);
+    const gameId = Number(params.id);
+    if (!Number.isSafeInteger(gameId) || gameId < 1) throw new BizError('Partie invalide');
+    return { data: { game: await ludo.resign(db, user.id, gameId) } };
   });
 
   route('GET', '/api/wallet', async (req, res, { query }) => {
