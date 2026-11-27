@@ -117,8 +117,7 @@ async function expireStaleGames(db) {
   await tx(db, async (t) => {
     const games = await t.all(
       `SELECT * FROM ludo_games
-       WHERE (status = 'open' AND created_at < ${AGO('15 minutes')})
-          OR (status = 'active' AND updated_at < ${AGO('24 hours')})
+       WHERE status = 'active' AND updated_at < ${AGO('24 hours')}
        FOR UPDATE SKIP LOCKED`,
     );
     for (const game of games) {
@@ -171,7 +170,7 @@ export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
         `SELECT g.*
          FROM ludo_games g
          WHERE g.status = 'open' AND g.host_id <> ?
-         ORDER BY g.created_at ASC LIMIT 50`,
+         ORDER BY g.created_at DESC LIMIT 50`,
         userId,
       );
       const myRows = await db.all(
@@ -208,8 +207,18 @@ export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
           'INSERT INTO ludo_games (host_id, stake) VALUES (?, ?) RETURNING id',
           userId, stake,
         );
-        await adjustBalance(t, userId, -stake, 'ludo_stake', `ludo:${rows[0].id}`);
-        return rows[0].id;
+        const gameId = rows[0].id;
+        await adjustBalance(t, userId, -stake, 'ludo_stake', `ludo:${gameId}`);
+        await t.run(
+          `INSERT INTO notifications (user_id, title, body, event_key)
+           SELECT id, ?, ?, ? FROM users WHERE id <> ?
+           ON CONFLICT (user_id, event_key) WHERE event_key IS NOT NULL DO NOTHING`,
+          'Défi Ludo disponible',
+          `Un joueur propose une partie avec une mise de ${stake} CDF (pot de ${2 * stake} CDF). Ouvrez le menu Jeu de 6 pour rejoindre.`,
+          `ludo_offer:${gameId}`,
+          userId,
+        );
+        return gameId;
       });
       return loadGame(db, userId, id);
     },
