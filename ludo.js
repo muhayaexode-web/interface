@@ -87,6 +87,7 @@ function displayGame(game, userId) {
     },
     turnPlayerId: game.turn_player_id,
     lastRoll: game.last_roll,
+    lastRollResult: game.last_roll_display ?? game.last_roll,
     myPlayerId: userId,
     canRoll: game.status === 'active'
       && game.turn_player_id === userId
@@ -113,7 +114,7 @@ async function loadGame(db, userId, gameId) {
   return displayGame(game, userId);
 }
 
-async function expireStaleGames(db) {
+export async function expireStaleGames(db) {
   await tx(db, async (t) => {
     const games = await t.all(
       `SELECT * FROM ludo_games
@@ -136,6 +137,18 @@ async function expireStaleGames(db) {
   });
 }
 
+export function startLudoMaintenance(db) {
+  const expire = () => {
+    void expireStaleGames(db).catch((error) => {
+      console.error('[ludo] Expiration des parties échouée', error);
+    });
+  };
+  expire();
+  const timer = setInterval(expire, 60_000);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
 async function assertNoOpenGame(t, userId) {
   const existing = await t.get(
     `SELECT id FROM ludo_games
@@ -150,22 +163,21 @@ async function settle(t, game, winnerId) {
   const payout = 2 * game.stake - fee;
   await adjustBalance(t, winnerId, payout, 'ludo_win', `ludo:${game.id}`);
   await adjustBalance(t, null, fee, 'commission', `ludo:${game.id}`);
-  await t.run(
+  const updated = await t.run(
     `UPDATE ludo_games SET status = 'settled', winner_id = ?, payout = ?, commission = ?,
      last_roll = NULL, turn_player_id = NULL, updated_at = ${NOW}, settled_at = ${NOW}
-     WHERE id = ? AND status = 'active'`,
+     WHERE id = ? AND status = 'active' RETURNING *`,
     winnerId, payout, fee, game.id,
   );
   const loserId = winnerId === game.host_id ? game.opponent_id : game.host_id;
   await notify(t, winnerId, 'Partie Ludo gagnée', `Vous recevez ${payout} CDF après commission.`);
   await notify(t, loserId, 'Partie Ludo terminée', 'Votre adversaire a gagné. Votre mise a été utilisée pour le pot.');
-  return { winnerId, payout, commission: fee };
+  return { winnerId, payout, commission: fee, game: updated.rows[0] };
 }
 
 export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
   return {
     async list(db, userId) {
-      await expireStaleGames(db);
       const openRows = await db.all(
         `SELECT g.*
          FROM ludo_games g
@@ -193,7 +205,6 @@ export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
     },
 
     async get(db, userId, gameId) {
-      await expireStaleGames(db);
       return loadGame(db, userId, gameId);
     },
 
@@ -243,8 +254,7 @@ export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
     },
 
     async roll(db, userId, gameId) {
-      await expireStaleGames(db);
-      await tx(db, async (t) => {
+      const updatedGame = await tx(db, async (t) => {
         const game = await t.get('SELECT * FROM ludo_games WHERE id = ? FOR UPDATE', gameId);
         if (!game || game.status !== 'active') throw new BizError('La partie n’est pas active', 409);
         if (game.turn_player_id !== userId) throw new BizError('Ce n’est pas votre tour', 409);
@@ -254,23 +264,25 @@ export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
         const pieces = game.host_id === userId ? game.host_pieces : game.opponent_pieces;
         if (legalPieceMoves(pieces, die).length === 0) {
           const nextPlayer = game.host_id === userId ? game.opponent_id : game.host_id;
-          await t.run(
-            `UPDATE ludo_games SET turn_player_id = ?, updated_at = ${NOW} WHERE id = ?`,
-            nextPlayer, game.id,
+          const updated = await t.run(
+            `UPDATE ludo_games SET turn_player_id = ?, last_roll_display = ?, updated_at = ${NOW}
+             WHERE id = ? RETURNING *`,
+            nextPlayer, die, game.id,
           );
-          return;
+          return updated.rows[0];
         }
-        await t.run(
-          `UPDATE ludo_games SET last_roll = ?, updated_at = ${NOW} WHERE id = ?`,
-          die, game.id,
+        const updated = await t.run(
+          `UPDATE ludo_games SET last_roll = ?, last_roll_display = ?, updated_at = ${NOW}
+           WHERE id = ? RETURNING *`,
+          die, die, game.id,
         );
+        return updated.rows[0];
       });
-      return loadGame(db, userId, gameId);
+      return displayGame(updatedGame, userId);
     },
 
     async move(db, userId, gameId, pieceIndex) {
-      await expireStaleGames(db);
-      await tx(db, async (t) => {
+      const updatedGame = await tx(db, async (t) => {
         const game = await t.get('SELECT * FROM ludo_games WHERE id = ? FOR UPDATE', gameId);
         if (!game || game.status !== 'active') throw new BizError('La partie n’est pas active', 409);
         if (game.turn_player_id !== userId) throw new BizError('Ce n’est pas votre tour', 409);
@@ -290,28 +302,29 @@ export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
         const finished = moved.pieces.every((position) => position === FINISH_POSITION);
 
         if (finished) {
-          await t.run(
+          const updated = await t.run(
             `UPDATE ludo_games SET ${isHost ? 'host_pieces' : 'opponent_pieces'} = ?,
-             updated_at = ${NOW} WHERE id = ?`,
+             updated_at = ${NOW} WHERE id = ? RETURNING *`,
             JSON.stringify(moved.pieces), game.id,
           );
-          await settle(t, game, userId);
-          return;
+          const settled = await settle(t, updated.rows[0], userId);
+          return settled.game;
         }
 
         const nextPlayer = game.last_roll === 6
           ? userId
           : (isHost ? game.opponent_id : game.host_id);
-        await t.run(
+        const updated = await t.run(
           `UPDATE ludo_games SET host_pieces = ?, opponent_pieces = ?, turn_player_id = ?,
-           last_roll = NULL, updated_at = ${NOW} WHERE id = ?`,
+           last_roll = NULL, updated_at = ${NOW} WHERE id = ? RETURNING *`,
           JSON.stringify(isHost ? moved.pieces : moved.opponentPieces),
           JSON.stringify(isHost ? moved.opponentPieces : moved.pieces),
           nextPlayer,
           game.id,
         );
+        return updated.rows[0];
       });
-      return loadGame(db, userId, gameId);
+      return displayGame(updatedGame, userId);
     },
 
     async cancel(db, userId, gameId) {
@@ -334,16 +347,16 @@ export function createLudoService({ rollDie = () => randomInt(1, 7) } = {}) {
 
     async resign(db, userId, gameId) {
       await expireStaleGames(db);
-      await tx(db, async (t) => {
+      const result = await tx(db, async (t) => {
         const game = await t.get('SELECT * FROM ludo_games WHERE id = ? FOR UPDATE', gameId);
         if (!game || game.status !== 'active'
           || (game.host_id !== userId && game.opponent_id !== userId)) {
           throw new BizError('La partie active est introuvable', 404);
         }
         const winnerId = game.host_id === userId ? game.opponent_id : game.host_id;
-        await settle(t, game, winnerId);
+        return settle(t, game, winnerId);
       });
-      return loadGame(db, userId, gameId);
+      return displayGame(result.game, userId);
     },
   };
 }
